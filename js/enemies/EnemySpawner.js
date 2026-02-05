@@ -29,7 +29,10 @@ export default class EnemySpawner {
      * 获取当前有效的生成间隔
      */
     getEffectiveSpawnInterval() {
-        return this.baseSpawnInterval * this.spawnIntervalMultiplier;
+        const spawnMultiplier = Number.isFinite(GAME_CONFIG.ENEMY_SPAWN_MULTIPLIER)
+            ? GAME_CONFIG.ENEMY_SPAWN_MULTIPLIER
+            : 1;
+        return (this.baseSpawnInterval * this.spawnIntervalMultiplier) / Math.max(1, spawnMultiplier);
     }
 
     /**

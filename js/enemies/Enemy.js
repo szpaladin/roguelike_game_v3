@@ -15,7 +15,17 @@ export default class Enemy {
         this.speed = data.speed;
         this.radius = data.radius;
         this.color = data.color;
-        this.shapeSides = Number.isFinite(data.shapeSides) ? data.shapeSides : 0;
+        const hasCustomShape = Number.isFinite(data.shapeSides);
+        const computedShapeSides = (() => {
+            if (data.harmless === true) return 0;
+            if (Number.isFinite(data.attack) && data.attack <= 0) return 0;
+            const tier = Number.isFinite(data.tier) ? data.tier : 0;
+            if (tier <= 0) return 3;
+            if (tier === 1) return 4;
+            if (tier === 2) return 5;
+            return tier % 2 === 0 ? 6 : 5;
+        })();
+        this.shapeSides = hasCustomShape ? data.shapeSides : computedShapeSides;
         this.shapeRotation = Number.isFinite(data.shapeRotation) ? data.shapeRotation : Math.random() * Math.PI * 2;
         this.shapeRotationSpeed = Number.isFinite(data.shapeRotationSpeed)
             ? data.shapeRotationSpeed
