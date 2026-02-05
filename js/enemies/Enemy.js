@@ -15,6 +15,11 @@ export default class Enemy {
         this.speed = data.speed;
         this.radius = data.radius;
         this.color = data.color;
+        this.shapeSides = Number.isFinite(data.shapeSides) ? data.shapeSides : 0;
+        this.shapeRotation = Number.isFinite(data.shapeRotation) ? data.shapeRotation : Math.random() * Math.PI * 2;
+        this.shapeRotationSpeed = Number.isFinite(data.shapeRotationSpeed)
+            ? data.shapeRotationSpeed
+            : (this.shapeSides >= 3 ? (Math.random() * 0.02 - 0.01) : 0);
         this.exp = data.exp;
         this.gold = data.gold;
         this.moveType = data.moveType || 'chase';
@@ -166,6 +171,10 @@ export default class Enemy {
                 }
             }
         }
+
+        if (this.shapeRotationSpeed) {
+            this.shapeRotation += this.shapeRotationSpeed;
+        }
     }
 
     /**
@@ -189,10 +198,34 @@ export default class Enemy {
         if (this.hp <= 0) return;
 
         ctx.save();
+        const screenY = this.y - scrollY;
+        const sides = Number.isFinite(this.shapeSides) ? this.shapeSides : 0;
+        const rotation = Number.isFinite(this.shapeRotation) ? this.shapeRotation : 0;
+
+        const buildShapePath = () => {
+            if (sides >= 3) {
+                const step = (Math.PI * 2) / sides;
+                ctx.moveTo(
+                    this.x + Math.cos(rotation) * this.radius,
+                    screenY + Math.sin(rotation) * this.radius
+                );
+                for (let i = 1; i < sides; i++) {
+                    const angle = rotation + step * i;
+                    ctx.lineTo(
+                        this.x + Math.cos(angle) * this.radius,
+                        screenY + Math.sin(angle) * this.radius
+                    );
+                }
+                ctx.closePath();
+                return;
+            }
+
+            ctx.arc(this.x, screenY, this.radius, 0, Math.PI * 2);
+        };
 
         // 基础体
         ctx.beginPath();
-        ctx.arc(this.x, this.y - scrollY, this.radius, 0, Math.PI * 2);
+        buildShapePath();
         ctx.fillStyle = this.color;
         ctx.fill();
 
@@ -207,6 +240,8 @@ export default class Enemy {
             else if (this.statusEffects.hasEffect('poisoned')) primaryEffect = this.statusEffects.getEffect('poisoned');
 
             if (primaryEffect) {
+                ctx.beginPath();
+                buildShapePath();
                 ctx.strokeStyle = primaryEffect.color;
                 ctx.lineWidth = 2;
                 ctx.stroke();
@@ -215,20 +250,22 @@ export default class Enemy {
 
         // 致盲标识
         if (this.blinded) {
+            ctx.beginPath();
+            buildShapePath();
             ctx.fillStyle = 'rgba(0,0,0,0.5)';
             ctx.fill();
             ctx.fillStyle = 'white';
             ctx.font = '10px Arial';
-            ctx.fillText('X', this.x - 3, this.y - scrollY + 4);
+            ctx.fillText('X', this.x - 3, screenY + 4);
         }
 
         // 血条
         const healthBarW = this.radius * 2;
         const healthBarH = 4;
         ctx.fillStyle = 'red';
-        ctx.fillRect(this.x - this.radius, this.y - scrollY - this.radius - 8, healthBarW, healthBarH);
+        ctx.fillRect(this.x - this.radius, screenY - this.radius - 8, healthBarW, healthBarH);
         ctx.fillStyle = 'green';
-        ctx.fillRect(this.x - this.radius, this.y - scrollY - this.radius - 8, healthBarW * (this.hp / this.maxHp), healthBarH);
+        ctx.fillRect(this.x - this.radius, screenY - this.radius - 8, healthBarW * (this.hp / this.maxHp), healthBarH);
 
         ctx.restore();
     }

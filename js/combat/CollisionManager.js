@@ -271,7 +271,13 @@ export default class CollisionManager {
                 // 检查是否已经击中过该敌人 (防止穿透子弹重复计伤)
                 if (bullet.hitEntities && bullet.hitEntities.has(enemy)) continue;
 
-                if (circleCollision(bullet.x, bullet.y, bullet.radius, enemy.x, enemy.y, enemy.radius)) {
+                const bulletRadius = Number.isFinite(bullet.radius) ? bullet.radius : 0;
+                const enemyRadius = Number.isFinite(enemy.radius) ? enemy.radius : 0;
+                const collisionPadding = Number.isFinite(enemy.collisionPadding)
+                    ? enemy.collisionPadding
+                    : Math.max(1, enemyRadius * 0.15);
+
+                if (circleCollision(bullet.x, bullet.y, bulletRadius, enemy.x, enemy.y, enemyRadius + collisionPadding)) {
                     // 计算伤害
                     const isFullScreenDamage = bullet.fullScreenDamage === true;
                     const isFrozenBeforeHit = !isFullScreenDamage && enemy.statusEffects && enemy.statusEffects.isFrozen();

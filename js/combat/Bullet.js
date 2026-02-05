@@ -1,6 +1,8 @@
-ï»¿/**
- * Bullet - å­å¼¹ç±»
- * å¯é‡ç”¨çš„å­å¼¹å¯¹è±¡
+import { GAME_CONFIG } from '../config.js';
+
+/**
+ * Bullet - ×Óµ¯Àà
+ * ¿ÉÖØÓÃµÄ×Óµ¯¶ÔÏó
  */
 export default class Bullet {
     constructor(data) {
@@ -11,7 +13,7 @@ export default class Bullet {
     }
 
     /**
-     * é‡ç½®/åˆå§‹åŒ–å­å¼¹å±æ€§ï¼ˆç”¨äºå¯¹è±¡æ± å¤ç”¨ï¼‰
+     * ÖØÖÃ/³õÊ¼»¯×Óµ¯ÊôĞÔ£¨ÓÃÓÚ¶ÔÏó³Ø¸´ÓÃ£©
      */
     reset(data) {
         const coreKeys = new Set([
@@ -42,25 +44,29 @@ export default class Bullet {
         this.damage = data.damage;
         this.radius = data.radius;
         this.color = data.color;
-        this.lifetime = data.lifetime;
+        const baseLifetime = Number.isFinite(data.lifetime) ? data.lifetime : null;
+        const lifetimeMultiplier = Number.isFinite(GAME_CONFIG.BULLET_LIFETIME_MULTIPLIER)
+            ? GAME_CONFIG.BULLET_LIFETIME_MULTIPLIER
+            : 1;
+        this.lifetime = baseLifetime === null ? data.lifetime : Math.round(baseLifetime * lifetimeMultiplier);
         this.piercing = data.piercing || false;
         this.active = true;
         this.chainCooldownRemaining = 0;
 
-        // å­˜å‚¨æ‰€æœ‰å…¶ä»–é¢å¤–å±æ€§(å„ç§æ­¦å™¨ç‰¹æ•ˆ)
-        // è¿™æ ·ä¸éœ€è¦ä¸ºæ¯ç§æ­¦å™¨å­å¼¹å†™å­ç±»
+        // ´æ´¢ËùÓĞÆäËû¶îÍâÊôĞÔ(¸÷ÖÖÎäÆ÷ÌØĞ§)
+        // ÕâÑù²»ĞèÒªÎªÃ¿ÖÖÎäÆ÷×Óµ¯Ğ´×ÓÀà
         Object.keys(data).forEach(key => {
             if (!coreKeys.has(key)) {
                 this[key] = data[key];
             }
         });
 
-        // è®°å½•è¯¥å­å¼¹æ˜¯å¦å·²ç»å‘½ä¸­è¿‡æŸä¸ªæ•Œäººï¼ˆé’ˆå¯¹ç©¿é€å­å¼¹ï¼‰
+        // ¼ÇÂ¼¸Ã×Óµ¯ÊÇ·ñÒÑ¾­ÃüÖĞ¹ıÄ³¸öµĞÈË£¨Õë¶Ô´©Í¸×Óµ¯£©
         this.hitEntities = new Set();
     }
 
     /**
-     * æ›´æ–°é€»è¾‘
+     * ¸üĞÂÂß¼­
      */
     update() {
         if (!this.active) return;
@@ -78,7 +84,7 @@ export default class Bullet {
     }
 
     /**
-     * ç»˜åˆ¶å­å¼¹
+     * »æÖÆ×Óµ¯
      */
     draw(ctx, scrollY) {
         if (!this.active) return;
@@ -89,3 +95,4 @@ export default class Bullet {
         ctx.fill();
     }
 }
+

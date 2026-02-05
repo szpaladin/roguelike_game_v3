@@ -14,6 +14,7 @@ export const ENEMY_TYPES = [
         color: '#00ff00',
         speed: 0.6,
         radius: 10,
+        shapeSides: 3,
         spawnWeight: 1
     },
     {
@@ -28,6 +29,7 @@ export const ENEMY_TYPES = [
         color: '#F6E6A6',
         speed: 0.5,
         radius: 5,
+        shapeSides: 4,
         moveType: 'patrol_horizontal',
         patrolWaveAmplitude: 6,
         patrolWaveSpeed: 0.08,
@@ -45,7 +47,8 @@ export const ENEMY_TYPES = [
         gold: 5,
         color: '#00aa00',
         speed: 0.8,
-        radius: 12
+        radius: 12,
+        shapeSides: 5
     },
     {
         name: '鳗鲶',
@@ -58,7 +61,8 @@ export const ENEMY_TYPES = [
         gold: 10,
         color: '#cccccc',
         speed: 0.9,
-        radius: 13
+        radius: 13,
+        shapeSides: 6
     },
     {
         name: '毒刺水母',
@@ -71,7 +75,8 @@ export const ENEMY_TYPES = [
         gold: 15,
         color: '#6600cc',
         speed: 1.0,
-        radius: 14
+        radius: 14,
+        shapeSides: 3
     },
     {
         name: '三齿鲨',
@@ -84,7 +89,8 @@ export const ENEMY_TYPES = [
         gold: 20,
         color: '#ff0000',
         speed: 1.0,
-        radius: 14
+        radius: 14,
+        shapeSides: 4
     }
 ];
 
