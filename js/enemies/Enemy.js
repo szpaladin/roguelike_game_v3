@@ -15,6 +15,7 @@ export default class Enemy {
         this.speed = data.speed;
         this.radius = data.radius;
         this.color = data.color;
+        this.hiddenInSeaweed = false;
         const hasCustomShape = Number.isFinite(data.shapeSides);
         const computedShapeSides = (() => {
             if (data.harmless === true) return 0;
@@ -205,7 +206,7 @@ export default class Enemy {
      * 绘制敌人
      */
     draw(ctx, scrollY) {
-        if (this.hp <= 0) return;
+        if (this.hp <= 0 || this.hiddenInSeaweed) return;
 
         ctx.save();
         const screenY = this.y - scrollY;

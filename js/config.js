@@ -14,6 +14,17 @@ export const GAME_CONFIG = {
     AUTO_SCROLL_SPEED: 0.8,
     SPAWN_INTERVAL: 200,
     ENEMY_SPAWN_MULTIPLIER: 3,
+    SEAWEED: {
+        REVEAL_RADIUS: 140,
+        PATCH_MIN_SIZE: 240,
+        PATCH_MAX_SIZE: 360,
+        SPAWN_INTERVAL_MIN: 800,
+        SPAWN_INTERVAL_MAX: 1200,
+        SPAWN_OFFSET_MIN: 80,
+        SPAWN_OFFSET_MAX: 180,
+        COLOR: 'rgba(18, 80, 60, 0.75)',
+        EDGE_COLOR: 'rgba(20, 120, 90, 0.2)'
+    },
     PLAYER_INVULNERABLE_TIME: 60,
     BULLET_LIFETIME_MULTIPLIER: 2,
     // 撤离系统配置

@@ -120,7 +120,7 @@ export default class WeaponSystem {
         let minDist = Infinity;
 
         for (const enemy of enemies) {
-            if (enemy.hp <= 0) continue;
+            if (enemy.hp <= 0 || enemy.hiddenInSeaweed) continue;
 
             const dx = enemy.x - px;
             const dy = enemy.y - py;

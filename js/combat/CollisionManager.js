@@ -176,7 +176,7 @@ export default class CollisionManager {
         const collisions = [];
 
         for (const enemy of enemies) {
-            if (enemy.hp <= 0) continue;
+            if (enemy.hp <= 0 || enemy.hiddenInSeaweed) continue;
 
             const enemyScreenY = enemy.y - scrollY;
             if (circleCollision(player.x, player.y, player.radius, enemy.x, enemyScreenY, enemy.radius)) {
@@ -266,7 +266,7 @@ export default class CollisionManager {
             if (!bullet.active) continue;
 
             for (const enemy of enemies) {
-                if (enemy.hp <= 0) continue;
+                if (enemy.hp <= 0 || enemy.hiddenInSeaweed) continue;
 
                 // 检查是否已经击中过该敌人 (防止穿透子弹重复计伤)
                 if (bullet.hitEntities && bullet.hitEntities.has(enemy)) continue;

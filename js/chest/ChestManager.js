@@ -360,6 +360,7 @@ export default class ChestManager {
      */
     draw(ctx, scrollY) {
         for (const chest of this.chests) {
+            if (chest.hiddenInSeaweed) continue;
             const screenY = chest.y - scrollY;
 
             // 绘制宝箱（金色方块）

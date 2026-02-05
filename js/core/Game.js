@@ -18,6 +18,7 @@ import PlagueSystem from '../effects/PlagueSystem.js';
 import DarkFlameSystem from '../effects/DarkFlameSystem.js';
 import LightningRodSystem from '../effects/LightningRodSystem.js';
 import TerrainEffectManager from '../effects/TerrainEffectManager.js';
+import SeaweedManager from '../environment/SeaweedManager.js';
 import ChestManager from '../chest/ChestManager.js';
 import HUD from '../ui/HUD.js';
 import DebugOverlay from '../ui/DebugOverlay.js';
@@ -90,6 +91,7 @@ export default class Game {
         this.darkFlameSystem = new DarkFlameSystem();
         this.lightningRodSystem = new LightningRodSystem(this.effectsManager);
         this.terrainEffects = new TerrainEffectManager();
+        this.seaweedManager = new SeaweedManager(this.width, this.height);
 
         // UI 系统
         this.hud = new HUD();
@@ -236,6 +238,7 @@ export default class Game {
 
         // 2. 生成敌人（传入玩家世界坐标）
         const playerWorldPos = { x: this.player.x, y: this.player.y + this.scrollY };
+        this.playerWorldPos = playerWorldPos;
         const newEnemy = this.enemySpawner.spawn(this.distance, playerWorldPos);
         if (newEnemy) {
             this.enemies.push(newEnemy);
@@ -260,6 +263,9 @@ export default class Game {
         const finalLighting = Math.max(0, Math.min(0.9, lightingAlpha + lightingOffset));
         this.lightingSystem.setTargetAlpha(finalLighting);
         this.lightingSystem.update(dt);
+
+        this.seaweedManager.update(this.scrollY, this.width, this.height);
+        this.seaweedManager.updateEnemyVisibility(this.enemies, playerWorldPos);
 
         // 4. 自动攻击（子弹生成）
         this.player.weaponSystem.autoShoot(
@@ -329,6 +335,10 @@ export default class Game {
         }
 
         this.collisionManager.resolveEnemyCollisions(this.enemies, { left: 0, right: this.width });
+        this.seaweedManager.updateEnemyVisibility(this.enemies, playerWorldPos);
+        if (this.chestManager && this.chestManager.chests) {
+            this.seaweedManager.updateChestVisibility(this.chestManager.chests, playerWorldPos);
+        }
 
         // 7.5 Floating text for random level-up bonuses
         const levelUpBonuses = this.player.stats.consumeLevelUpBonuses();
@@ -357,7 +367,9 @@ export default class Game {
             }
         }
 
-        this.collisionManager.checkBulletEnemyCollisions(this.bulletPool.getActiveBullets(), this.enemies, this.player.stats.strength);
+        const activeBullets = this.bulletPool.getActiveBullets();
+        this.seaweedManager.resolveBulletInteractions(activeBullets, playerWorldPos);
+        this.collisionManager.checkBulletEnemyCollisions(activeBullets, this.enemies, this.player.stats.strength);
         this.collisionManager.checkBulletWallCollisions(this.bulletPool.getActiveBullets(), {
             left: 0,
             right: this.width,
@@ -427,6 +439,9 @@ export default class Game {
 
         // 绘制撤离点
         this.evacuationManager.draw(this.ctx, this.scrollY);
+
+        const playerWorldPos = this.playerWorldPos || { x: this.player.x, y: this.player.y + this.scrollY };
+        this.seaweedManager.draw(this.ctx, this.scrollY, playerWorldPos);
 
         // 绘制玩家
         this.player.draw(this.ctx);

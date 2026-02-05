@@ -17,7 +17,7 @@ export default class StatusVFXManager {
     }
 
     update(enemies) {
-        const aliveEnemies = enemies.filter(enemy => enemy && enemy.hp > 0 && !enemy.isDead);
+        const aliveEnemies = enemies.filter(enemy => enemy && enemy.hp > 0 && !enemy.isDead && !enemy.hiddenInSeaweed);
         const activeEnemies = new Set(aliveEnemies);
         for (const enemy of this.enemyEffects.keys()) {
             if (!activeEnemies.has(enemy)) {
