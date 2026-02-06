@@ -1,3 +1,5 @@
+import { wrapDeltaX, worldToScreen } from '../utils.js';
+
 /**
  * TerrainEffectManager - 地形效果管理器
  * 负责岩脊带等地形控场效果的生命周期与应用
@@ -37,7 +39,7 @@ export default class TerrainEffectManager {
      * 更新地形效果（每帧调用）
      * @param {Array<Enemy>} enemies - 敌人列表
      */
-    update(enemies = []) {
+    update(enemies = [], worldWidth = null) {
         for (let i = this.ridges.length - 1; i >= 0; i--) {
             this.ridges[i].life--;
             if (this.ridges[i].life <= 0) {
@@ -50,7 +52,7 @@ export default class TerrainEffectManager {
         for (const enemy of enemies) {
             if (!enemy || enemy.hp <= 0 || enemy.isDead) continue;
             for (const ridge of this.ridges) {
-                if (this.isEnemyInsideRidge(enemy, ridge)) {
+                if (this.isEnemyInsideRidge(enemy, ridge, worldWidth)) {
                     enemy.applyStatusEffect('slowed', ridge.slowDuration, {
                         slowAmount: ridge.slowAmount
                     });
@@ -62,15 +64,16 @@ export default class TerrainEffectManager {
     /**
      * 绘制地形效果
      */
-    draw(ctx, scrollY) {
+    draw(ctx, view) {
         if (!ctx) return;
         ctx.save();
         ctx.fillStyle = 'rgba(107, 90, 74, 0.35)';
 
         for (const ridge of this.ridges) {
-            const screenY = ridge.y - scrollY;
+            const screen = view ? worldToScreen(ridge.x, ridge.y, view) : { x: ridge.x, y: ridge.y };
+            const screenY = screen.y;
             ctx.save();
-            ctx.translate(ridge.x, screenY);
+            ctx.translate(screen.x, screenY);
             ctx.rotate(ridge.angle);
             ctx.fillRect(-ridge.length / 2, -ridge.width / 2, ridge.length, ridge.width);
             ctx.restore();
@@ -82,8 +85,8 @@ export default class TerrainEffectManager {
     /**
      * 判定敌人中心点是否在岩脊带内
      */
-    isEnemyInsideRidge(enemy, ridge) {
-        const dx = enemy.x - ridge.x;
+    isEnemyInsideRidge(enemy, ridge, worldWidth = null) {
+        const dx = Number.isFinite(worldWidth) ? wrapDeltaX(enemy.x - ridge.x, worldWidth) : (enemy.x - ridge.x);
         const dy = enemy.y - ridge.y;
         const cos = Math.cos(-ridge.angle);
         const sin = Math.sin(-ridge.angle);

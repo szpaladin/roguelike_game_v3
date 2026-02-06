@@ -1,3 +1,5 @@
+import { worldToScreen } from '../utils.js';
+
 const MIN_SHARDS = 6;
 const MAX_SHARDS = 12;
 
@@ -69,15 +71,16 @@ export default class FrozenVFX {
         }
     }
 
-    draw(ctx, scrollY, enemy) {
+    draw(ctx, view, enemy) {
         if (!ctx || !enemy) return;
 
+        const screen = view ? worldToScreen(enemy.x, enemy.y, view) : { x: enemy.x, y: enemy.y };
         for (const shard of this.shards) {
             const pulse = 0.6 + Math.sin(shard.pulsePhase) * 0.4;
             const alpha = Math.max(0, Math.min(1, 0.35 * pulse * this.intensity));
             const distance = shard.distance + Math.sin(shard.pulsePhase) * this.radius * 0.05;
-            const x = enemy.x + Math.cos(shard.angle) * distance;
-            const y = enemy.y - scrollY + Math.sin(shard.angle) * distance;
+            const x = screen.x + Math.cos(shard.angle) * distance;
+            const y = screen.y + Math.sin(shard.angle) * distance;
 
             ctx.save();
             ctx.translate(x, y);

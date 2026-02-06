@@ -1,6 +1,7 @@
 ﻿import { GAME_CONFIG, TILE, ENTITY } from '../config.js';
-import { log } from '../utils.js';
+import { log, wrapX } from '../utils.js';
 import MapManager from './MapManager.js';
+import DirectionController from './DirectionController.js';
 import Player from './Player.js';
 import OxygenSystem from './OxygenSystem.js';
 import LightingSystem from './LightingSystem.js';
@@ -19,6 +20,8 @@ import DarkFlameSystem from '../effects/DarkFlameSystem.js';
 import LightningRodSystem from '../effects/LightningRodSystem.js';
 import TerrainEffectManager from '../effects/TerrainEffectManager.js';
 import SeaweedManager from '../environment/SeaweedManager.js';
+import FogManager from '../environment/FogManager.js';
+import DeepSeaBackground from '../environment/DeepSeaBackground.js';
 import ChestManager from '../chest/ChestManager.js';
 import HUD from '../ui/HUD.js';
 import DebugOverlay from '../ui/DebugOverlay.js';
@@ -53,6 +56,18 @@ export default class Game {
         this.gameTime = 0;
         this.distance = 0;
         this.scrollY = 0;
+        this.scrollX = 0;
+        this.cameraX = 0;
+        this.cameraY = 0;
+        this.baseWorldWidth = GAME_CONFIG.TILE_SIZE * GAME_CONFIG.MAP_WIDTH;
+        const wrapScreens = Number.isFinite(GAME_CONFIG.HORIZONTAL_WRAP_BUFFER_SCREENS)
+            ? GAME_CONFIG.HORIZONTAL_WRAP_BUFFER_SCREENS
+            : 1;
+        const wrapBuffer = this.width * wrapScreens;
+        this.worldWidth = this.baseWorldWidth + wrapBuffer;
+        this.scrollSpeed = GAME_CONFIG.AUTO_SCROLL_SPEED;
+        this.eventSpeedMultiplier = 1;
+        this.directionController = new DirectionController(GAME_CONFIG.DIRECTION_RANDOM || {});
         this.keys = {};
 
         // 氧气系统（基础间隔：每4秒扣1点HP；实际间隔由 RiskSystem 动态调整）
@@ -92,6 +107,8 @@ export default class Game {
         this.lightningRodSystem = new LightningRodSystem(this.effectsManager);
         this.terrainEffects = new TerrainEffectManager();
         this.seaweedManager = new SeaweedManager(this.width, this.height);
+        this.fogManager = new FogManager(this.width, this.height);
+        this.background = new DeepSeaBackground(this.width, this.height, this.baseWorldWidth);
 
         // UI 系统
         this.hud = new HUD();
@@ -147,6 +164,7 @@ export default class Game {
         this.chestManager = new ChestManager(this.chestUI, {
             width: this.width,
             height: this.height,
+            worldWidth: this.worldWidth,
             artifactSystem: this.artifactSystem
         });
 
@@ -166,11 +184,10 @@ export default class Game {
         });
 
         // 注册撤离呼叫回调
-        this.upgradeUI.setEvacuationCallback(() => {
-            this.evacuationManager.requestEvacuation(
-                this.scrollY,
-                this.height
-            );
+                this.upgradeUI.setEvacuationCallback(() => {
+            const view = this.view || this.getView();
+            const dir = this.directionController ? this.directionController.getDirection() : { x: 0, y: 1 };
+            this.evacuationManager.requestEvacuation(view, dir);
         });
 
         // 设置碰撞管理器的依赖项（用于攻击范围等效果）
@@ -215,9 +232,20 @@ export default class Game {
         }
 
         this.gameTime++;
-        // distance 是像素单位的滚动距离
-        this.distance += GAME_CONFIG.AUTO_SCROLL_SPEED * (dt * 60);
-        this.scrollY = this.distance;
+        const frameScale = dt * 60;
+        const dir = this.directionController.update(dt);
+        const speedMultiplier = this.riskSystem.getScrollSpeedMultiplier(Math.floor(this.distance / 10));
+        this.scrollSpeed = GAME_CONFIG.AUTO_SCROLL_SPEED * speedMultiplier * this.eventSpeedMultiplier;
+        const delta = this.scrollSpeed * frameScale;
+        this.scrollX = wrapX(this.scrollX + dir.x * delta, this.worldWidth);
+        this.scrollY += dir.y * delta;
+        this.distance += Math.max(0, dir.y * delta);
+        this.view = this.getView();
+        if (this.background) {
+            this.background.update(dt, this.view);
+        }
+        this.collisionManager.setWorldWidth(this.worldWidth);
+        this.lightningRodSystem.setWorldWidth(this.worldWidth);
 
         // 1. 地图更新
         this.mapManager.update(this.scrollY, this.height);
@@ -237,16 +265,23 @@ export default class Game {
         }
 
         // 2. 生成敌人（传入玩家世界坐标）
-        const playerWorldPos = { x: this.player.x, y: this.player.y + this.scrollY };
-        this.playerWorldPos = playerWorldPos;
-        const newEnemy = this.enemySpawner.spawn(this.distance, playerWorldPos);
+        const spawnWorldPos = {
+            x: wrapX(this.scrollX + this.player.x, this.worldWidth),
+            y: this.scrollY + this.player.y
+        };
+
+        const newEnemy = this.enemySpawner.spawn(this.distance, spawnWorldPos, this.view, dir);
         if (newEnemy) {
             this.enemies.push(newEnemy);
         }
 
         // 3. 玩家更新
         this.player.update(this.keys, dt, this.scrollY);
-
+        const playerWorldPos = {
+            x: wrapX(this.scrollX + this.player.x, this.worldWidth),
+            y: this.scrollY + this.player.y
+        };
+        this.playerWorldPos = playerWorldPos;
         // 3.5 氧气消耗（从 RiskSystem 获取间隔）
         const oxygenInterval = this.riskSystem.getOxygenInterval(distanceInMeters);
         const oxygenMultiplier = this.artifactSystem && typeof this.artifactSystem.getOxygenIntervalMultiplier === 'function'
@@ -264,8 +299,8 @@ export default class Game {
         this.lightingSystem.setTargetAlpha(finalLighting);
         this.lightingSystem.update(dt);
 
-        this.seaweedManager.update(this.scrollY, this.width, this.height);
-        this.seaweedManager.updateEnemyVisibility(this.enemies, playerWorldPos);
+        this.seaweedManager.update(this.view, dir);
+        this.fogManager.update(this.view, dir);
 
         // 4. 自动攻击（子弹生成）
         this.player.weaponSystem.autoShoot(
@@ -273,7 +308,7 @@ export default class Game {
             this.player.stats.strength,
             this.enemies,
             this.bulletPool,
-            this.scrollY,
+            this.view,
             this.artifactSystem
         );
 
@@ -290,20 +325,20 @@ export default class Game {
             this.evacuationManager.spawnInterval = baseInterval
                 * this.artifactSystem.getEvacuationSpawnIntervalMultiplier();
         }
-        this.evacuationManager.updateSpawning(this.distance);
+        this.evacuationManager.updateSpawning(this.distance, this.view, dir);
         // 更新围攻配置（根据当前深度）
         const siegeConfig = this.riskSystem.getSiegeConfig(distanceInMeters);
         this.evacuationManager.setSiegeConfig(siegeConfig);
-        this.evacuationManager.update(this.player, this.scrollY, dt);
+        this.evacuationManager.update(this.player, this.view, dt);
 
         // 6.8 地形效果更新（影响敌人移动）
-        this.terrainEffects.update(this.enemies);
+        this.terrainEffects.update(this.enemies, this.worldWidth);
 
         // 7. 更新敌人位置和状态
-        const playerPos = { x: this.player.x, y: this.player.y };
+
         for (let i = this.enemies.length - 1; i >= 0; i--) {
             const enemy = this.enemies[i];
-            enemy.update(playerPos, this.scrollY, this.height, this.width);
+            enemy.update(playerWorldPos, this.view);
             if (enemy.hp <= 0 && !enemy.isDead) {
                 const sacrifice = enemy.statusEffects ? enemy.statusEffects.getEffect('abyss_sacrifice') : null;
                 if (sacrifice) {
@@ -334,17 +369,19 @@ export default class Game {
             }
         }
 
-        this.collisionManager.resolveEnemyCollisions(this.enemies, { left: 0, right: this.width });
+        this.collisionManager.resolveEnemyCollisions(this.enemies);
         this.seaweedManager.updateEnemyVisibility(this.enemies, playerWorldPos);
+        this.fogManager.updateEnemyVisibility(this.enemies, playerWorldPos);
         if (this.chestManager && this.chestManager.chests) {
             this.seaweedManager.updateChestVisibility(this.chestManager.chests, playerWorldPos);
+            this.fogManager.updateChestVisibility(this.chestManager.chests, playerWorldPos);
         }
 
         // 7.5 Floating text for random level-up bonuses
         const levelUpBonuses = this.player.stats.consumeLevelUpBonuses();
         if (levelUpBonuses.length > 0) {
-            const baseX = this.player.x;
-            const baseY = this.player.y + this.scrollY - this.player.radius - 8;
+            const baseX = playerWorldPos.x;
+            const baseY = playerWorldPos.y - this.player.radius - 8;
             levelUpBonuses.forEach((bonus, index) => {
                 const isStrength = bonus.stat === 'strength';
                 const text = isStrength ? '力量+1' : '智力+1';
@@ -354,7 +391,7 @@ export default class Game {
         }
 
         // 8. 碰撞检测
-        const playerCollisions = this.collisionManager.checkPlayerEnemyCollisions(this.player, this.enemies, this.scrollY);
+        const playerCollisions = this.collisionManager.checkPlayerEnemyCollisions(this.player, this.enemies, this.view);
 
         // 处理玩家与敌人的碰撞（玩家受伤）
         for (const enemy of playerCollisions) {
@@ -368,18 +405,14 @@ export default class Game {
         }
 
         const activeBullets = this.bulletPool.getActiveBullets();
+        this.fogManager.resolveBulletInteractions(activeBullets, playerWorldPos);
         this.seaweedManager.resolveBulletInteractions(activeBullets, playerWorldPos);
         this.collisionManager.checkBulletEnemyCollisions(activeBullets, this.enemies, this.player.stats.strength);
-        this.collisionManager.checkBulletWallCollisions(this.bulletPool.getActiveBullets(), {
-            left: 0,
-            right: this.width,
-            top: this.scrollY,
-            bottom: this.scrollY + this.height
-        });
+        this.collisionManager.checkBulletWallCollisions(activeBullets, this.view);
 
         this.statusVFXManager.update(this.enemies);
-        this.plagueSystem.update(this.enemies);
-        this.darkFlameSystem.update(this.enemies);
+        this.plagueSystem.update(this.enemies, this.worldWidth);
+        this.darkFlameSystem.update(this.enemies, this.worldWidth);
         this.lightningRodSystem.update(this.enemies, this.player.stats);
 
         // 9. 检查游戏结束
@@ -388,7 +421,7 @@ export default class Game {
         }
 
         // 10. 更新宝箱
-        this.chestManager.update(this.player, this.scrollY, (chest) => {
+        this.chestManager.update(this.player, this.view, (chest) => {
             this.paused = true;
             this.chestManager.openChest(chest, this.player, {
                 distanceMeters: Math.floor(this.distance / 10),
@@ -408,46 +441,64 @@ export default class Game {
         this.hud.update(this.player, this.distance);
     }
 
+    getView() {
+        return {
+            width: this.width,
+            height: this.height,
+            scrollX: this.scrollX,
+            scrollY: this.scrollY,
+            worldWidth: this.worldWidth,
+            cameraX: this.scrollX + this.width / 2,
+            cameraY: this.scrollY + this.height / 2,
+            scrollSpeed: this.scrollSpeed
+        };
+    }
     /**
      * 绘制
      */
     draw() {
         this.ctx.clearRect(0, 0, this.width, this.height);
+        const view = this.view || this.getView();
+
+        if (this.background) {
+            this.background.draw(this.ctx, view);
+        }
 
         // 绘制地图
-        this.mapManager.draw(this.ctx, this.scrollY, this.width, this.height);
+        this.mapManager.draw(this.ctx, view);
 
         // 绘制地形效果（敌人下方）
-        this.terrainEffects.draw(this.ctx, this.scrollY);
+        this.terrainEffects.draw(this.ctx, view);
 
         // 绘制敌人
         this.enemies.forEach(enemy => {
-            enemy.draw(this.ctx, this.scrollY);
+            enemy.draw(this.ctx, view);
         });
 
-        this.statusVFXManager.draw(this.ctx, this.scrollY);
-        this.plagueSystem.draw(this.ctx, this.scrollY);
+        this.statusVFXManager.draw(this.ctx, view);
+        this.plagueSystem.draw(this.ctx, view);
 
         // 绘制宝箱
-        this.chestManager.draw(this.ctx, this.scrollY);
+        this.chestManager.draw(this.ctx, view);
 
         // 绘制子弹
-        this.bulletPool.draw(this.ctx, this.scrollY);
+        this.bulletPool.draw(this.ctx, view);
 
         // 绘制视觉特效
-        this.effectsManager.draw(this.ctx, this.scrollY);
+        this.effectsManager.draw(this.ctx, view);
 
         // 绘制撤离点
-        this.evacuationManager.draw(this.ctx, this.scrollY);
+        this.evacuationManager.draw(this.ctx, view);
 
-        const playerWorldPos = this.playerWorldPos || { x: this.player.x, y: this.player.y + this.scrollY };
-        this.seaweedManager.draw(this.ctx, this.scrollY, playerWorldPos);
+        const playerWorldPos = this.playerWorldPos || { x: wrapX(this.scrollX + this.player.x, this.worldWidth), y: this.scrollY + this.player.y };
+        this.seaweedManager.draw(this.ctx, view, playerWorldPos);
+        this.fogManager.draw(this.ctx, view, playerWorldPos);
 
         // 绘制玩家
         this.player.draw(this.ctx);
 
         // Draw level-up floating texts
-        this.effectsManager.drawFloatingTexts(this.ctx, this.scrollY);
+        this.effectsManager.drawFloatingTexts(this.ctx, view);
 
         // 绘制光照遮罩（最后绘制）
         this.lightingSystem.draw(this.ctx, this.width, this.height);
@@ -554,4 +605,3 @@ export default class Game {
         }
     }
 }
-

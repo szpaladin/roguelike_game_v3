@@ -1,4 +1,4 @@
-import { circleCollision } from '../utils.js';
+import { circleCollision, wrapDeltaX, wrapX, worldToScreen } from '../utils.js';
 import AOEHandler from './AOEHandler.js';
 import { applyBulletStatusEffects } from '../enemies/StatusEffects.js';
 
@@ -16,6 +16,7 @@ export default class CollisionManager {
         // 玩家引用（用于吸血等效果）
         this.player = null;
         this.terrainEffects = null;
+        this.worldWidth = null;
     }
 
     /**
@@ -29,6 +30,13 @@ export default class CollisionManager {
         this.effectsManager = effectsManager;
         this.player = player;
         this.terrainEffects = terrainEffects;
+    }
+
+    setWorldWidth(width) {
+        this.worldWidth = Number.isFinite(width) ? width : null;
+        if (this.aoeHandler && typeof this.aoeHandler.setWorldWidth === 'function') {
+            this.aoeHandler.setWorldWidth(this.worldWidth);
+        }
     }
 
     /**
@@ -50,7 +58,7 @@ export default class CollisionManager {
                 const b = enemies[j];
                 if (!b || b.hp <= 0) continue;
 
-                const dx = b.x - a.x;
+                const dx = this.worldWidth ? wrapDeltaX(b.x - a.x, this.worldWidth) : (b.x - a.x);
                 const dy = b.y - a.y;
                 const minDist = (a.radius || 0) + (b.radius || 0);
                 const minDistSq = minDist * minDist;
@@ -78,6 +86,11 @@ export default class CollisionManager {
                 b.x += nx * push;
                 b.y += ny * push;
 
+                if (this.worldWidth) {
+                    a.x = wrapX(a.x, this.worldWidth);
+                    b.x = wrapX(b.x, this.worldWidth);
+                }
+
                 if (left !== null && right !== null) {
                     const aMin = left + (a.radius || 0);
                     const aMax = right - (a.radius || 0);
@@ -95,13 +108,13 @@ export default class CollisionManager {
      * @param {Array<Bullet>} bullets - 子弹列表
      * @param {Object} bounds - 边界 { left, right, top, bottom }
      */
-    checkBulletWallCollisions(bullets, bounds) {
-        if (!Array.isArray(bullets) || !bounds) return;
+    checkBulletWallCollisions(bullets, view) {
+        if (!Array.isArray(bullets) || !view) return;
 
-        const left = Number.isFinite(bounds.left) ? bounds.left : 0;
-        const right = Number.isFinite(bounds.right) ? bounds.right : 0;
-        const top = Number.isFinite(bounds.top) ? bounds.top : 0;
-        const bottom = Number.isFinite(bounds.bottom) ? bounds.bottom : 0;
+        const width = Number.isFinite(view.width) ? view.width : 0;
+        const height = Number.isFinite(view.height) ? view.height : 0;
+        const top = Number.isFinite(view.scrollY) ? view.scrollY : 0;
+        const bottom = top + height;
 
         for (const bullet of bullets) {
             if (!bullet || !bullet.active) continue;
@@ -114,11 +127,15 @@ export default class CollisionManager {
 
             if (bullet.bounceOnWall === false) continue;
 
-            if (bullet.x - bullet.radius <= left) {
-                bullet.x = left + bullet.radius;
+            const screen = worldToScreen(bullet.x, bullet.y, view);
+
+            if (screen.x - bullet.radius <= 0) {
+                const targetScreenX = bullet.radius;
+                bullet.x = wrapX((view.scrollX || 0) + targetScreenX, view.worldWidth);
                 bullet.vx = Math.abs(bullet.vx);
-            } else if (bullet.x + bullet.radius >= right) {
-                bullet.x = right - bullet.radius;
+            } else if (screen.x + bullet.radius >= width) {
+                const targetScreenX = width - bullet.radius;
+                bullet.x = wrapX((view.scrollX || 0) + targetScreenX, view.worldWidth);
                 bullet.vx = -Math.abs(bullet.vx);
             }
 
@@ -135,7 +152,7 @@ export default class CollisionManager {
     bounceBulletOffEnemy(bullet, enemy) {
         if (!bullet || !enemy) return;
 
-        const dx = bullet.x - enemy.x;
+        const dx = this.worldWidth ? wrapDeltaX(bullet.x - enemy.x, this.worldWidth) : (bullet.x - enemy.x);
         const dy = bullet.y - enemy.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
         let nx = 0;
@@ -163,6 +180,9 @@ export default class CollisionManager {
         const targetDist = (enemy.radius || 0) + (bullet.radius || 0) + 0.1;
         bullet.x = enemy.x + nx * targetDist;
         bullet.y = enemy.y + ny * targetDist;
+        if (this.worldWidth) {
+            bullet.x = wrapX(bullet.x, this.worldWidth);
+        }
     }
 
     /**
@@ -172,14 +192,14 @@ export default class CollisionManager {
      * @param {number} scrollY - 滚动偏移
      * @returns {Array<Enemy>} - 与玩家碰撞的敌人列表
      */
-    checkPlayerEnemyCollisions(player, enemies, scrollY = 0) {
+    checkPlayerEnemyCollisions(player, enemies, view = null) {
         const collisions = [];
 
         for (const enemy of enemies) {
-            if (enemy.hp <= 0 || enemy.hiddenInSeaweed) continue;
+            if (enemy.hp <= 0 || enemy.hiddenInSeaweed || enemy.hiddenInFog) continue;
 
-            const enemyScreenY = enemy.y - scrollY;
-            if (circleCollision(player.x, player.y, player.radius, enemy.x, enemyScreenY, enemy.radius)) {
+            const screen = view ? worldToScreen(enemy.x, enemy.y, view) : { x: enemy.x, y: enemy.y };
+            if (circleCollision(player.x, player.y, player.radius, screen.x, screen.y, enemy.radius)) {
                 collisions.push(enemy);
             }
         }
@@ -266,7 +286,7 @@ export default class CollisionManager {
             if (!bullet.active) continue;
 
             for (const enemy of enemies) {
-                if (enemy.hp <= 0 || enemy.hiddenInSeaweed) continue;
+                if (enemy.hp <= 0 || enemy.hiddenInSeaweed || enemy.hiddenInFog) continue;
 
                 // 检查是否已经击中过该敌人 (防止穿透子弹重复计伤)
                 if (bullet.hitEntities && bullet.hitEntities.has(enemy)) continue;
@@ -277,7 +297,10 @@ export default class CollisionManager {
                     ? enemy.collisionPadding
                     : Math.max(1, enemyRadius * 0.15);
 
-                if (circleCollision(bullet.x, bullet.y, bulletRadius, enemy.x, enemy.y, enemyRadius + collisionPadding)) {
+                const dx = this.worldWidth ? wrapDeltaX(enemy.x - bullet.x, this.worldWidth) : (enemy.x - bullet.x);
+                const dy = enemy.y - bullet.y;
+                const radiusSum = bulletRadius + enemyRadius + collisionPadding;
+                if (dx * dx + dy * dy < radiusSum * radiusSum) {
                     // 计算伤害
                     const isFullScreenDamage = bullet.fullScreenDamage === true;
                     const isFrozenBeforeHit = !isFullScreenDamage && enemy.statusEffects && enemy.statusEffects.isFrozen();
@@ -328,18 +351,15 @@ export default class CollisionManager {
                     }
 
                     // 穿透处理
-                    const bounceOnEnemy = bullet.bounceOnEnemy !== false;
+                    const isPiercing = bullet.piercing === true;
+                    const bounceOnEnemy = !isPiercing && bullet.bounceOnEnemy !== false;
 
                     if (bounceOnEnemy) {
                         this.bounceBulletOffEnemy(bullet, enemy);
-                        if (bullet.piercing) {
-                            if (!bullet.hitEntities) bullet.hitEntities = new Set();
-                            bullet.hitEntities.add(enemy);
-                        }
                         break;
                     }
 
-                    if (bullet.piercing) {
+                    if (isPiercing) {
                         if (!bullet.hitEntities) bullet.hitEntities = new Set();
                         bullet.hitEntities.add(enemy);
                     } else {

@@ -17,7 +17,7 @@ export default class StatusVFXManager {
     }
 
     update(enemies) {
-        const aliveEnemies = enemies.filter(enemy => enemy && enemy.hp > 0 && !enemy.isDead && !enemy.hiddenInSeaweed);
+        const aliveEnemies = enemies.filter(enemy => enemy && enemy.hp > 0 && !enemy.isDead && !enemy.hiddenInSeaweed && !enemy.hiddenInFog);
         const activeEnemies = new Set(aliveEnemies);
         for (const enemy of this.enemyEffects.keys()) {
             if (!activeEnemies.has(enemy)) {
@@ -59,10 +59,10 @@ export default class StatusVFXManager {
         }
     }
 
-    draw(ctx, scrollY) {
+    draw(ctx, view) {
         for (const [enemy, effectMap] of this.enemyEffects.entries()) {
             for (const vfx of effectMap.values()) {
-                vfx.draw(ctx, scrollY, enemy);
+                vfx.draw(ctx, view, enemy);
             }
         }
     }

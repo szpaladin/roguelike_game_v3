@@ -1,4 +1,6 @@
 ﻿import StatusEffectManager from './StatusEffectManager.js';
+import { GAME_CONFIG } from '../config.js';
+import { wrapDeltaX, wrapX, worldToScreen } from '../utils.js';
 
 /**
  * Enemy class - 敌人基类
@@ -16,6 +18,9 @@ export default class Enemy {
         this.radius = data.radius;
         this.color = data.color;
         this.hiddenInSeaweed = false;
+        this.hiddenInFog = false;
+        this.vx = 0;
+        this.vy = 0;
         const hasCustomShape = Number.isFinite(data.shapeSides);
         const computedShapeSides = (() => {
             if (data.harmless === true) return 0;
@@ -143,7 +148,7 @@ export default class Enemy {
      * @param {number} canvasHeight - 画布高度
      * @param {number} canvasWidth - 画布宽度
      */
-    update(playerPos, scrollY, canvasHeight, canvasWidth) {
+    update(playerWorldPos, view) {
         if (this.hp <= 0) return;
 
         // 更新状态效果并应用持续伤害
@@ -151,37 +156,67 @@ export default class Enemy {
         if (dotDamage > 0) {
             this.applyDamage(dotDamage, { source: 'dot', applyVulnerability: false, ignoreDefense: true, minDamage: 0 });
         }
+        const inertiaCfg = GAME_CONFIG.WATER_INERTIA || {};
+        const accel = Number.isFinite(inertiaCfg.ENEMY_ACCEL) ? inertiaCfg.ENEMY_ACCEL : 0.14;
+        const decel = Number.isFinite(inertiaCfg.ENEMY_DECEL) ? inertiaCfg.ENEMY_DECEL : 0.12;
+        const stopThreshold = Number.isFinite(inertiaCfg.ENEMY_STOP) ? inertiaCfg.ENEMY_STOP : 0.02;
 
         // 移动逻辑 (如果不冰冻)
         if (!this.statusEffects.isFrozen()) {
             const speedMultiplier = this.statusEffects.getSpeedMultiplier();
             if (this.moveType === 'patrol_horizontal') {
-                this.x += this.speed * speedMultiplier * this.patrolDirection;
+                const targetVx = this.speed * speedMultiplier * this.patrolDirection;
+                this.vx += (targetVx - this.vx) * accel;
+                this.vy += (0 - this.vy) * decel;
+                if (Math.abs(this.vx) < stopThreshold) this.vx = 0;
+                if (Math.abs(this.vy) < stopThreshold) this.vy = 0;
+                this.x += this.vx;
                 this.patrolPhase += this.patrolWaveSpeed * speedMultiplier;
                 this.y = this.patrolBaseY + Math.sin(this.patrolPhase) * this.patrolWaveAmplitude;
-                if (Number.isFinite(canvasWidth)) {
+                if (view && Number.isFinite(view.worldWidth)) {
                     const minX = this.radius;
-                    const maxX = canvasWidth - this.radius;
+                    const maxX = view.worldWidth - this.radius;
                     if (this.x <= minX) {
                         this.x = minX;
                         this.patrolDirection = 1;
+                        this.vx = 0;
                     } else if (this.x >= maxX) {
                         this.x = maxX;
                         this.patrolDirection = -1;
+                        this.vx = 0;
                     }
                 }
+                if (view && Number.isFinite(view.worldWidth)) {
+                    this.x = wrapX(this.x, view.worldWidth);
+                }
             } else {
-                // playerWorldY = scrollY + playerPos.y (玩家屏幕坐标转世界坐标)
-                const playerWorldY = scrollY + playerPos.y;
-                const dx = playerPos.x - this.x;
-                const dy = playerWorldY - this.y;
+                const dx = (view && Number.isFinite(view.worldWidth))
+                    ? wrapDeltaX(playerWorldPos.x - this.x, view.worldWidth)
+                    : (playerWorldPos.x - this.x);
+                const dy = playerWorldPos.y - this.y;
                 const d = Math.sqrt(dx * dx + dy * dy);
                 if (d > 0) {
-                    this.x += (dx / d) * this.speed * speedMultiplier;
-                    this.y += (dy / d) * this.speed * speedMultiplier;
+                    const targetVx = (dx / d) * this.speed * speedMultiplier;
+                    const targetVy = (dy / d) * this.speed * speedMultiplier;
+                    this.vx += (targetVx - this.vx) * accel;
+                    this.vy += (targetVy - this.vy) * accel;
+                } else {
+                    this.vx += (0 - this.vx) * decel;
+                    this.vy += (0 - this.vy) * decel;
+                }
+                if (Math.abs(this.vx) < stopThreshold) this.vx = 0;
+                if (Math.abs(this.vy) < stopThreshold) this.vy = 0;
+                this.x += this.vx;
+                this.y += this.vy;
+                if (view && Number.isFinite(view.worldWidth)) {
+                    this.x = wrapX(this.x, view.worldWidth);
                 }
             }
+        } else {
+            this.vx = 0;
+            this.vy = 0;
         }
+
 
         if (this.shapeRotationSpeed) {
             this.shapeRotation += this.shapeRotationSpeed;
@@ -205,11 +240,12 @@ export default class Enemy {
     /**
      * 绘制敌人
      */
-    draw(ctx, scrollY) {
-        if (this.hp <= 0 || this.hiddenInSeaweed) return;
+    draw(ctx, view) {
+        if (this.hp <= 0 || this.hiddenInSeaweed || this.hiddenInFog) return;
 
         ctx.save();
-        const screenY = this.y - scrollY;
+        const screen = view ? worldToScreen(this.x, this.y, view) : { x: this.x, y: this.y };
+        const screenY = screen.y;
         const sides = Number.isFinite(this.shapeSides) ? this.shapeSides : 0;
         const rotation = Number.isFinite(this.shapeRotation) ? this.shapeRotation : 0;
 
@@ -217,13 +253,13 @@ export default class Enemy {
             if (sides >= 3) {
                 const step = (Math.PI * 2) / sides;
                 ctx.moveTo(
-                    this.x + Math.cos(rotation) * this.radius,
+                    screen.x + Math.cos(rotation) * this.radius,
                     screenY + Math.sin(rotation) * this.radius
                 );
                 for (let i = 1; i < sides; i++) {
                     const angle = rotation + step * i;
                     ctx.lineTo(
-                        this.x + Math.cos(angle) * this.radius,
+                        screen.x + Math.cos(angle) * this.radius,
                         screenY + Math.sin(angle) * this.radius
                     );
                 }
@@ -231,7 +267,7 @@ export default class Enemy {
                 return;
             }
 
-            ctx.arc(this.x, screenY, this.radius, 0, Math.PI * 2);
+            ctx.arc(screen.x, screenY, this.radius, 0, Math.PI * 2);
         };
 
         // 基础体
@@ -267,16 +303,16 @@ export default class Enemy {
             ctx.fill();
             ctx.fillStyle = 'white';
             ctx.font = '10px Arial';
-            ctx.fillText('X', this.x - 3, screenY + 4);
+            ctx.fillText('X', screen.x - 3, screenY + 4);
         }
 
         // 血条
         const healthBarW = this.radius * 2;
         const healthBarH = 4;
         ctx.fillStyle = 'red';
-        ctx.fillRect(this.x - this.radius, screenY - this.radius - 8, healthBarW, healthBarH);
+        ctx.fillRect(screen.x - this.radius, screenY - this.radius - 8, healthBarW, healthBarH);
         ctx.fillStyle = 'green';
-        ctx.fillRect(this.x - this.radius, screenY - this.radius - 8, healthBarW * (this.hp / this.maxHp), healthBarH);
+        ctx.fillRect(screen.x - this.radius, screenY - this.radius - 8, healthBarW * (this.hp / this.maxHp), healthBarH);
 
         ctx.restore();
     }
@@ -317,5 +353,7 @@ export default class Enemy {
         }
     }
 }
+
+
 
 

@@ -1,9 +1,10 @@
 import { getStatusEffect } from '../enemies/StatusEffects.js';
+import { wrapDeltaX } from '../utils.js';
 
 const DARK_FLAME_ID = 'dark_flame';
 
 export default class DarkFlameSystem {
-    update(enemies) {
+    update(enemies, worldWidth = null) {
         if (!Array.isArray(enemies)) return;
 
         const definition = getStatusEffect(DARK_FLAME_ID);
@@ -25,11 +26,11 @@ export default class DarkFlameSystem {
             if (effect.spreadCooldown > 0) continue;
             effect.spreadCooldown = effect.params.spreadInterval || defaultInterval;
 
-            this.spreadFrom(enemy, effect, enemies, defaultPadding, definition);
+            this.spreadFrom(enemy, effect, enemies, defaultPadding, definition, worldWidth);
         }
     }
 
-    spreadFrom(source, effect, enemies, defaultPadding, definition) {
+    spreadFrom(source, effect, enemies, defaultPadding, definition, worldWidth = null) {
         if (!source || !effect || !Array.isArray(enemies)) return;
 
         const padding = Number.isFinite(effect.params.contactPadding)
@@ -48,7 +49,7 @@ export default class DarkFlameSystem {
             if (target.statusEffects.hasEffect(DARK_FLAME_ID)) continue;
 
             const contactDistance = (source.radius || 0) + (target.radius || 0) + padding;
-            const dx = target.x - source.x;
+            const dx = Number.isFinite(worldWidth) ? wrapDeltaX(target.x - source.x, worldWidth) : (target.x - source.x);
             const dy = target.y - source.y;
             const distSq = dx * dx + dy * dy;
 

@@ -1,6 +1,8 @@
+﻿import { worldToScreen } from '../utils.js';
+
 /**
- * EffectsManager - 视觉特效管理器
- * 负责管理游戏中的各种视觉特效（爆炸、闪电、射线等）
+ * EffectsManager - 瑙嗚鐗规晥绠＄悊鍣?
+ * 璐熻矗绠＄悊娓告垙涓殑鍚勭瑙嗚鐗规晥锛堢垎鐐搞€侀棯鐢点€佸皠绾跨瓑锛?
  */
 export default class EffectsManager {
     constructor() {
@@ -11,10 +13,10 @@ export default class EffectsManager {
     }
 
     /**
-     * 更新所有特效
+     * 鏇存柊鎵€鏈夌壒鏁?
      */
     update() {
-        // 更新爆炸特效
+        // 鏇存柊鐖嗙偢鐗规晥
         for (let i = this.explosionEffects.length - 1; i >= 0; i--) {
             const effect = this.explosionEffects[i];
             effect.life--;
@@ -25,7 +27,7 @@ export default class EffectsManager {
             }
         }
 
-        // 更新闪电特效
+        // 鏇存柊闂數鐗规晥
         for (let i = this.lightningEffects.length - 1; i >= 0; i--) {
             const effect = this.lightningEffects[i];
             effect.life--;
@@ -35,7 +37,7 @@ export default class EffectsManager {
             }
         }
 
-        // 更新射线特效
+        // 鏇存柊灏勭嚎鐗规晥
         for (let i = this.rayEffects.length - 1; i >= 0; i--) {
             const effect = this.rayEffects[i];
             effect.life--;
@@ -57,13 +59,16 @@ export default class EffectsManager {
     }
 
     /**
-     * 绘制所有特效
+     * 缁樺埗鎵€鏈夌壒鏁?
      */
-    draw(ctx, scrollY) {
+    draw(ctx, view) {
+        const toScreen = (x, y) => view ? worldToScreen(x, y, view) : { x, y };
+
         // 绘制爆炸特效
         for (const effect of this.explosionEffects) {
+            const screen = toScreen(effect.x, effect.y);
             ctx.beginPath();
-            ctx.arc(effect.x, effect.y - scrollY, effect.currentRadius, 0, Math.PI * 2);
+            ctx.arc(screen.x, screen.y, effect.currentRadius, 0, Math.PI * 2);
             ctx.strokeStyle = effect.color;
             ctx.lineWidth = 3;
             ctx.globalAlpha = effect.life / effect.maxLife;
@@ -78,22 +83,24 @@ export default class EffectsManager {
             ctx.globalAlpha = effect.life / 15;
 
             for (const chain of effect.chains) {
+                const from = toScreen(chain.from.x, chain.from.y);
+                const to = toScreen(chain.to.x, chain.to.y);
                 ctx.beginPath();
-                ctx.moveTo(chain.from.x, chain.from.y - scrollY);
+                ctx.moveTo(from.x, from.y);
 
                 // 添加锯齿效果
-                const dx = chain.to.x - chain.from.x;
-                const dy = chain.to.y - chain.from.y;
+                const dx = to.x - from.x;
+                const dy = to.y - from.y;
                 const segments = 5;
 
                 for (let i = 1; i <= segments; i++) {
                     const t = i / segments;
-                    const x = chain.from.x + dx * t + (Math.random() - 0.5) * 20;
-                    const y = chain.from.y + dy * t + (Math.random() - 0.5) * 20;
-                    ctx.lineTo(x, y - scrollY);
+                    const x = from.x + dx * t + (Math.random() - 0.5) * 20;
+                    const y = from.y + dy * t + (Math.random() - 0.5) * 20;
+                    ctx.lineTo(x, y);
                 }
 
-                ctx.lineTo(chain.to.x, chain.to.y - scrollY);
+                ctx.lineTo(to.x, to.y);
                 ctx.stroke();
             }
             ctx.globalAlpha = 1;
@@ -101,9 +108,34 @@ export default class EffectsManager {
 
         // 绘制射线特效
         for (const effect of this.rayEffects) {
+            if (effect.mode === 'directional') {
+                const origin = toScreen(effect.x, effect.y);
+                const viewW = view ? (view.width || 0) : 0;
+                const viewH = view ? (view.height || 0) : 0;
+                const diag = Math.hypot(viewW, viewH);
+                const scale = Number.isFinite(effect.lengthScale) ? effect.lengthScale : 1.2;
+                const fullLength = Number.isFinite(effect.length) ? effect.length : diag * scale;
+                const half = fullLength * 0.5;
+                const startX = origin.x - effect.dirX * half;
+                const startY = origin.y - effect.dirY * half;
+                const endX = origin.x + effect.dirX * half;
+                const endY = origin.y + effect.dirY * half;
+                ctx.beginPath();
+                ctx.moveTo(startX, startY);
+                ctx.lineTo(endX, endY);
+                ctx.strokeStyle = effect.color;
+                ctx.lineWidth = 4;
+                ctx.globalAlpha = effect.life / 10;
+                ctx.stroke();
+                ctx.globalAlpha = 1;
+                continue;
+            }
+
+            const start = toScreen(effect.startX, effect.startY);
+            const end = toScreen(effect.endX, effect.endY);
             ctx.beginPath();
-            ctx.moveTo(effect.startX, effect.startY - scrollY);
-            ctx.lineTo(effect.endX, effect.endY - scrollY);
+            ctx.moveTo(start.x, start.y);
+            ctx.lineTo(end.x, end.y);
             ctx.strokeStyle = effect.color;
             ctx.lineWidth = 4;
             ctx.globalAlpha = effect.life / 10;
@@ -115,8 +147,9 @@ export default class EffectsManager {
     /**
      * Draw floating texts (call after player draw).
      */
-    drawFloatingTexts(ctx, scrollY) {
+    drawFloatingTexts(ctx, view) {
         if (!ctx || this.floatingTexts.length === 0) return;
+        const toScreen = (x, y) => view ? worldToScreen(x, y, view) : { x, y };
 
         ctx.save();
         ctx.textAlign = 'center';
@@ -127,7 +160,8 @@ export default class EffectsManager {
             ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
             ctx.font = effect.font;
             ctx.fillStyle = effect.color;
-            ctx.fillText(effect.text, effect.x, effect.y - scrollY);
+            const screen = toScreen(effect.x, effect.y);
+            ctx.fillText(effect.text, screen.x, screen.y);
         }
 
         ctx.restore();
@@ -135,7 +169,7 @@ export default class EffectsManager {
     }
 
     /**
-     * 添加爆炸特效
+     * 娣诲姞鐖嗙偢鐗规晥
      */
     addExplosion(x, y, radius, color = '#ff4500') {
         this.explosionEffects.push({
@@ -150,7 +184,7 @@ export default class EffectsManager {
     }
 
     /**
-     * 添加闪电链特效
+     * 娣诲姞闂數閾剧壒鏁?
      */
     addLightningChain(chains) {
         this.lightningEffects.push({
@@ -160,9 +194,24 @@ export default class EffectsManager {
     }
 
     /**
-     * 添加射线特效
+     * 娣诲姞灏勭嚎鐗规晥
      */
-    addRay(startX, startY, endX, endY, color = '#FFA500') {
+    addRay(startX, startY, endX, endY, color = '#FFA500', options = {}) {
+        if (options && options.mode === 'directional') {
+            this.rayEffects.push({
+                x: startX,
+                y: startY,
+                dirX: endX,
+                dirY: endY,
+                color,
+                life: 10,
+                mode: 'directional',
+                lengthScale: options.lengthScale,
+                length: options.length
+            });
+            return;
+        }
+
         this.rayEffects.push({
             startX,
             startY,
@@ -195,7 +244,7 @@ export default class EffectsManager {
     }
 
     /**
-     * 清除所有特效
+     * 娓呴櫎鎵€鏈夌壒鏁?
      */
     clear() {
         this.explosionEffects = [];
@@ -204,4 +253,5 @@ export default class EffectsManager {
         this.floatingTexts = [];
     }
 }
+
 

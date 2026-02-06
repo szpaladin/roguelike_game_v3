@@ -1,8 +1,9 @@
-import { GAME_CONFIG } from '../config.js';
+ï»¿import { GAME_CONFIG } from '../config.js';
+import { worldToScreen } from '../utils.js';
 
 /**
- * Bullet - ×Óµ¯Àà
- * ¿ÉÖØÓÃµÄ×Óµ¯¶ÔÏó
+ * Bullet - å­å¼¹ç±»
+ * å¯é‡ç”¨çš„å­å¼¹å¯¹è±¡
  */
 export default class Bullet {
     constructor(data) {
@@ -13,7 +14,7 @@ export default class Bullet {
     }
 
     /**
-     * ÖØÖÃ/³õÊ¼»¯×Óµ¯ÊôĞÔ£¨ÓÃÓÚ¶ÔÏó³Ø¸´ÓÃ£©
+     * é‡ç½®/åˆå§‹åŒ–å­å¼¹å±æ€§ï¼ˆç”¨äºå¯¹è±¡æ± å¤ç”¨ï¼‰
      */
     reset(data) {
         const coreKeys = new Set([
@@ -53,20 +54,20 @@ export default class Bullet {
         this.active = true;
         this.chainCooldownRemaining = 0;
 
-        // ´æ´¢ËùÓĞÆäËû¶îÍâÊôĞÔ(¸÷ÖÖÎäÆ÷ÌØĞ§)
-        // ÕâÑù²»ĞèÒªÎªÃ¿ÖÖÎäÆ÷×Óµ¯Ğ´×ÓÀà
+        // å­˜å‚¨æ‰€æœ‰å…¶ä»–é¢å¤–å±æ€§(å„ç§æ­¦å™¨ç‰¹æ•ˆ)
+        // è¿™æ ·ä¸éœ€è¦ä¸ºæ¯ç§æ­¦å™¨å­å¼¹å†™å­ç±»
         Object.keys(data).forEach(key => {
             if (!coreKeys.has(key)) {
                 this[key] = data[key];
             }
         });
 
-        // ¼ÇÂ¼¸Ã×Óµ¯ÊÇ·ñÒÑ¾­ÃüÖĞ¹ıÄ³¸öµĞÈË£¨Õë¶Ô´©Í¸×Óµ¯£©
+        // è®°å½•è¯¥å­å¼¹æ˜¯å¦å·²ç»å‘½ä¸­è¿‡æŸä¸ªæ•Œäººï¼ˆé’ˆå¯¹ç©¿é€å­å¼¹ï¼‰
         this.hitEntities = new Set();
     }
 
     /**
-     * ¸üĞÂÂß¼­
+     * æ›´æ–°é€»è¾‘
      */
     update() {
         if (!this.active) return;
@@ -84,15 +85,17 @@ export default class Bullet {
     }
 
     /**
-     * »æÖÆ×Óµ¯
+     * ç»˜åˆ¶å­å¼¹
      */
-    draw(ctx, scrollY) {
+    draw(ctx, view) {
         if (!this.active) return;
 
+        const screen = view ? worldToScreen(this.x, this.y, view) : { x: this.x, y: this.y };
         ctx.beginPath();
-        ctx.arc(this.x, this.y - scrollY, this.radius, 0, Math.PI * 2);
+        ctx.arc(screen.x, screen.y, this.radius, 0, Math.PI * 2);
         ctx.fillStyle = this.color;
         ctx.fill();
     }
 }
+
 

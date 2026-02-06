@@ -56,10 +56,10 @@ export default class BulletPool {
     /**
      * 绘制所有激活的子弹
      */
-    draw(ctx, scrollY) {
+    draw(ctx, view) {
         for (let i = 0; i < this.pool.length; i++) {
             if (this.pool[i].active) {
-                this.pool[i].draw(ctx, scrollY);
+                this.pool[i].draw(ctx, view);
             }
         }
     }

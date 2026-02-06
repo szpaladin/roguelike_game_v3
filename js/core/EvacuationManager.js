@@ -1,5 +1,5 @@
 import { GAME_CONFIG } from '../config.js';
-import { log } from '../utils.js';
+import { log, wrapDeltaX, wrapX, worldToScreen } from '../utils.js';
 
 /**
  * EvacuationManager - 撤离点管理器
@@ -56,11 +56,11 @@ export default class EvacuationManager {
      * 基于距离更新撤离点生成
      * @param {number} distance - 当前距离（像素）
      */
-    updateSpawning(distance) {
+    updateSpawning(distance, view = null, dir = null) {
         const nextSpawnDistance = this.lastSpawnDistance + this.spawnInterval;
 
         if (distance >= nextSpawnDistance) {
-            this.spawnEvacuationPoint(distance);
+            this.spawnEvacuationPoint(distance, view, dir);
             this.lastSpawnDistance = nextSpawnDistance;
         }
     }
@@ -70,12 +70,25 @@ export default class EvacuationManager {
      * @param {number} distance - 当前距离
      * @param {number} screenHeight - 屏幕高度
      */
-    spawnEvacuationPoint(distance, screenHeight = 800) {
+    spawnEvacuationPoint(distance, view = null, dir = null) {
         // 在屏幕水平随机位置，玩家前方较远位置生成（屏幕下方）
         const mapWidth = GAME_CONFIG.MAP_WIDTH * GAME_CONFIG.TILE_SIZE;
         const margin = 60; // 距离边缘的安全边距
-        const x = margin + Math.random() * (mapWidth - margin * 2);
-        const y = distance + screenHeight + 200; // 在当前滚动位置 + 屏幕高度 + 200，让撤离点出现在屏幕下方
+        let x;
+        let y;
+        if (view && dir && Number.isFinite(view.cameraX) && Number.isFinite(view.cameraY)) {
+            const forward = (view.height || 0) + 200;
+            const sideRange = (view.width || mapWidth) * 0.4;
+            const side = (Math.random() * 2 - 1) * sideRange;
+            const perpX = -dir.y;
+            const perpY = dir.x;
+            x = wrapX(view.cameraX + dir.x * forward + perpX * side, view.worldWidth || mapWidth);
+            y = view.cameraY + dir.y * forward + perpY * side;
+        } else {
+            const screenHeight = view && Number.isFinite(view.height) ? view.height : 800;
+            x = margin + Math.random() * (mapWidth - margin * 2);
+            y = distance + screenHeight + 200;
+        }
 
         this.evacuationPoints.push({
             x,
@@ -93,12 +106,26 @@ export default class EvacuationManager {
      * @param {number} scrollY - 当前滚动偏移
      * @param {number} screenHeight - 屏幕高度
      */
-    requestEvacuation(scrollY, screenHeight = 800) {
+    requestEvacuation(view = null, dir = null) {
         // 在屏幕水平随机位置，玩家前方较远位置生成（屏幕下方）
         const mapWidth = GAME_CONFIG.MAP_WIDTH * GAME_CONFIG.TILE_SIZE;
         const margin = 60; // 距离边缘的安全边距
-        const x = margin + Math.random() * (mapWidth - margin * 2);
-        const y = scrollY + screenHeight + 200;
+        let x;
+        let y;
+        if (view && dir && Number.isFinite(view.cameraX) && Number.isFinite(view.cameraY)) {
+            const forward = (view.height || 0) + 200;
+            const sideRange = (view.width || mapWidth) * 0.4;
+            const side = (Math.random() * 2 - 1) * sideRange;
+            const perpX = -dir.y;
+            const perpY = dir.x;
+            x = wrapX(view.cameraX + dir.x * forward + perpX * side, view.worldWidth || mapWidth);
+            y = view.cameraY + dir.y * forward + perpY * side;
+        } else {
+            const screenHeight = view && Number.isFinite(view.height) ? view.height : 800;
+            const scrollY = view && Number.isFinite(view.scrollY) ? view.scrollY : 0;
+            x = margin + Math.random() * (mapWidth - margin * 2);
+            y = scrollY + screenHeight + 200;
+        }
 
         this.pendingEvacuations.push({
             timer: this.summonDelay,
@@ -122,7 +149,9 @@ export default class EvacuationManager {
      * @param {number} scrollY - 滚动偏移
      * @param {number} dt - 帧间隔（秒）
      */
-    update(player, scrollY, dt) {
+    update(player, view, dt) {
+        const scrollY = view ? (view.scrollY || 0) : 0;
+        const playerWorldX = view ? wrapX((view.scrollX || 0) + player.x, view.worldWidth || (GAME_CONFIG.MAP_WIDTH * GAME_CONFIG.TILE_SIZE)) : player.x;
         // 处理待处理撤离召唤
         this.pendingEvacuations = this.pendingEvacuations.filter(pending => {
             pending.timer -= dt;
@@ -157,7 +186,9 @@ export default class EvacuationManager {
         let inEvacZone = false;
 
         for (const point of this.evacuationPoints) {
-            const dx = player.x - point.x;
+            const dx = view && Number.isFinite(view.worldWidth)
+                ? wrapDeltaX(playerWorldX - point.x, view.worldWidth)
+                : (playerWorldX - point.x);
             const dy = playerWorldY - point.y;
             const dist = Math.sqrt(dx * dx + dy * dy);
 
@@ -258,10 +289,11 @@ export default class EvacuationManager {
      * @param {CanvasRenderingContext2D} ctx
      * @param {number} scrollY
      */
-    draw(ctx, scrollY) {
+    draw(ctx, view) {
         ctx.save();
         for (const point of this.evacuationPoints) {
-            const screenY = point.y - scrollY;
+            const screen = view ? worldToScreen(point.x, point.y, view) : { x: point.x, y: point.y };
+            const screenY = screen.y;
 
             // 确保在屏幕范围内才绘制
             if (screenY < -100 || screenY > ctx.canvas.height + 100) continue;
@@ -272,8 +304,8 @@ export default class EvacuationManager {
 
             // 绘制外圈光晕
             const gradient = ctx.createRadialGradient(
-                point.x, screenY, 0,
-                point.x, screenY, currentRadius * 1.5
+                screen.x, screenY, 0,
+                screen.x, screenY, currentRadius * 1.5
             );
             gradient.addColorStop(0, 'rgba(0, 255, 100, 0.4)');
             gradient.addColorStop(0.6, 'rgba(0, 255, 100, 0.2)');
@@ -281,32 +313,32 @@ export default class EvacuationManager {
 
             ctx.fillStyle = gradient;
             ctx.beginPath();
-            ctx.arc(point.x, screenY, currentRadius * 1.5, 0, Math.PI * 2);
+            ctx.arc(screen.x, screenY, currentRadius * 1.5, 0, Math.PI * 2);
             ctx.fill();
 
             // 绘制主圆圈
             ctx.strokeStyle = '#00ff64';
             ctx.lineWidth = 3;
             ctx.beginPath();
-            ctx.arc(point.x, screenY, currentRadius, 0, Math.PI * 2);
+            ctx.arc(screen.x, screenY, currentRadius, 0, Math.PI * 2);
             ctx.stroke();
 
             // 绘制内圈
             ctx.strokeStyle = 'rgba(0, 255, 100, 0.5)';
             ctx.lineWidth = 2;
             ctx.beginPath();
-            ctx.arc(point.x, screenY, currentRadius * 0.6, 0, Math.PI * 2);
+            ctx.arc(screen.x, screenY, currentRadius * 0.6, 0, Math.PI * 2);
             ctx.stroke();
 
             // 绘制撤离文字
             ctx.fillStyle = '#00ff64';
             ctx.font = 'bold 14px Arial';
             ctx.textAlign = 'center';
-            ctx.fillText('撤离点', point.x, screenY - currentRadius - 10);
+            ctx.fillText('撤离点', screen.x, screenY - currentRadius - 10);
 
             // 如果正在撤离，绘制进度
             if (this.isEvacuating && this.currentEvacPoint === point) {
-                this.drawEvacuationProgress(ctx, point.x, screenY, currentRadius);
+                this.drawEvacuationProgress(ctx, screen.x, screenY, currentRadius);
             }
         }
         ctx.restore();

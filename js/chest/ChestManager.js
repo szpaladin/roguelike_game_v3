@@ -1,4 +1,5 @@
 import { GAME_CONFIG } from '../config.js';
+import { wrapDeltaX, wrapX, worldToScreen } from '../utils.js';
 import { log } from '../utils.js';
 import { WEAPON_ID_MAP, WEAPON_TIER } from '../weapons/WeaponsData.js';
 import { executeFusion } from '../weapons/FusionSystem.js';
@@ -61,6 +62,7 @@ export default class ChestManager {
         this.chests = [];
         this.viewWidth = Number.isFinite(view.width) ? view.width : 600;
         this.viewHeight = Number.isFinite(view.height) ? view.height : 600;
+        this.worldWidth = Number.isFinite(view.worldWidth) ? view.worldWidth : this.viewWidth;
         this.lastScrollY = 0;
         this.lastScrollDelta = GAME_CONFIG.AUTO_SCROLL_SPEED;
 
@@ -172,7 +174,8 @@ export default class ChestManager {
         const offsetY = randomRange(CHEST_MOTION.spawnOffsetYMin, CHEST_MOTION.spawnOffsetYMax);
         const minY = this.lastScrollY + CHEST_MOTION.topSafeMargin;
         const spawnY = Math.max(y + offsetY, minY);
-        const spawnX = x + randomRange(-CHEST_MOTION.spawnOffsetX, CHEST_MOTION.spawnOffsetX);
+        const spawnXRaw = x + randomRange(-CHEST_MOTION.spawnOffsetX, CHEST_MOTION.spawnOffsetX);
+        const spawnX = this.worldWidth ? wrapX(spawnXRaw, this.worldWidth) : spawnXRaw;
         const minVy = scrollSpeed * CHEST_MOTION.minSpeedMultiplier;
         const initialVy = Math.max(scrollSpeed * CHEST_MOTION.dropSpeedMultiplier, minVy);
 
@@ -197,8 +200,11 @@ export default class ChestManager {
      * @param {number} scrollY - 滚动偏移
      * @param {Function} onOpenChest - 打开宝箱时的回调
      */
-    update(player, scrollY, onOpenChest) {
-        const scrollDelta = Math.max(0, scrollY - this.lastScrollY);
+    update(player, view, onOpenChest) {
+        const scrollY = view ? (view.scrollY || 0) : 0;
+        const scrollDelta = Number.isFinite(view && view.scrollSpeed)
+            ? view.scrollSpeed
+            : Math.max(0, scrollY - this.lastScrollY);
         if (scrollDelta > 0) {
             this.lastScrollDelta = scrollDelta;
         }
@@ -207,7 +213,7 @@ export default class ChestManager {
         for (let i = this.chests.length - 1; i >= 0; i--) {
             const chest = this.chests[i];
 
-            this.updateChestMotion(chest, scrollY);
+            this.updateChestMotion(chest, view);
 
             // 更新交互冷却
             if (chest.interactionCooldown > 0) {
@@ -221,9 +227,9 @@ export default class ChestManager {
             }
 
             // 检查玩家与宝箱碰撞
-            const chestScreenY = chest.y - scrollY;
-            const dx = player.x - chest.x;
-            const dy = player.y - chestScreenY;
+            const chestScreen = view ? worldToScreen(chest.x, chest.y, view) : { x: chest.x, y: chest.y };
+            const dx = player.x - chestScreen.x;
+            const dy = player.y - chestScreen.y;
             const dist = Math.sqrt(dx * dx + dy * dy);
 
             if (dist < player.radius + chest.radius && chest.interactionCooldown <= 0) {
@@ -302,7 +308,7 @@ export default class ChestManager {
      * @param {WeaponSystem} weaponSystem - 武器系统
      * @param {Object} recipe - 融合配方
      */
-    updateChestMotion(chest, scrollY) {
+    updateChestMotion(chest, view) {
         if (!chest) return;
         if (!chest.phase) {
             chest.phase = 'drift';
@@ -319,6 +325,9 @@ export default class ChestManager {
             chest.x += chest.vx;
             chest.y += chest.vy;
             chest.dropFrames = (chest.dropFrames ?? 0) + 1;
+            if (this.worldWidth) {
+                chest.x = wrapX(chest.x, this.worldWidth);
+            }
 
             if (chest.vy <= (chest.minVy ?? 0) || chest.dropFrames >= CHEST_MOTION.dropMaxFrames) {
                 chest.phase = 'drift';
@@ -326,7 +335,8 @@ export default class ChestManager {
             return;
         }
 
-        const targetX = this.viewWidth * 0.5;
+        const targetX = view && Number.isFinite(view.cameraX) ? view.cameraX : this.viewWidth * 0.5;
+        const scrollY = view ? (view.scrollY || 0) : 0;
         const targetY = scrollY + this.viewHeight * CHEST_MOTION.driftTargetYRatio;
         chest.vx += (targetX - chest.x) * CHEST_MOTION.driftAttract +
             randomRange(-CHEST_MOTION.driftJitter, CHEST_MOTION.driftJitter);
@@ -343,6 +353,9 @@ export default class ChestManager {
 
         chest.x += chest.vx;
         chest.y += chest.vy;
+        if (this.worldWidth) {
+            chest.x = wrapX(chest.x, this.worldWidth);
+        }
     }
 
     /**
@@ -358,18 +371,19 @@ export default class ChestManager {
      * @param {CanvasRenderingContext2D} ctx - 绘图上下文
      * @param {number} scrollY - 滚动偏移
      */
-    draw(ctx, scrollY) {
+    draw(ctx, view) {
         for (const chest of this.chests) {
-            if (chest.hiddenInSeaweed) continue;
-            const screenY = chest.y - scrollY;
+            if (chest.hiddenInSeaweed || chest.hiddenInFog) continue;
+            const screen = view ? worldToScreen(chest.x, chest.y, view) : { x: chest.x, y: chest.y };
+            const screenY = screen.y;
 
             // 绘制宝箱（金色方块）
             ctx.fillStyle = chest.color;
-            ctx.fillRect(chest.x - 12, screenY - 10, 24, 20);
+            ctx.fillRect(screen.x - 12, screenY - 10, 24, 20);
 
             // 绘制锁扣
             ctx.fillStyle = '#8b4513';
-            ctx.fillRect(chest.x - 4, screenY - 5, 8, 10);
+            ctx.fillRect(screen.x - 4, screenY - 5, 8, 10);
         }
     }
 

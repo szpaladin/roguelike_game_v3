@@ -23,12 +23,13 @@ describe('Player', () => {
 
     test('diagonal movement is normalized', () => {
         const keys = { w: true, d: true }; // Up-Right
-        player.update(keys, 1 / 60, 0);
-        // distance should be speed * dt
-        const dx = player.x - 300;
-        const dy = player.y - 300;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        expect(dist).toBeCloseTo(player.stats.speed, 1);
+        for (let i = 0; i < 30; i++) {
+            player.update(keys, 1 / 60, 0);
+        }
+        const speed = Math.hypot(player.vx, player.vy);
+        expect(speed).toBeCloseTo(player.stats.speed, 1);
+        const ratio = Math.abs(player.vx / player.vy);
+        expect(ratio).toBeCloseTo(1, 1);
     });
 
     test('takeDamage triggers invulnerability', () => {

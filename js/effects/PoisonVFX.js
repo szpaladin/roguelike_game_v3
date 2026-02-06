@@ -1,3 +1,5 @@
+import { worldToScreen } from '../utils.js';
+
 const MIN_PARTICLES = 5;
 const MAX_PARTICLES = 16;
 
@@ -84,19 +86,20 @@ export default class PoisonVFX {
         }
     }
 
-    draw(ctx, scrollY, enemy) {
+    draw(ctx, view, enemy) {
         if (!ctx || !enemy) return;
 
         ctx.save();
+        const screen = view ? worldToScreen(enemy.x, enemy.y, view) : { x: enemy.x, y: enemy.y };
         ctx.beginPath();
-        ctx.arc(enemy.x, enemy.y - scrollY, this.radius, 0, Math.PI * 2);
+        ctx.arc(screen.x, screen.y, this.radius, 0, Math.PI * 2);
         ctx.clip();
 
         for (const particle of this.particles) {
             const lifeRatio = particle.maxLife > 0 ? particle.life / particle.maxLife : 1;
             const alpha = Math.max(0, Math.min(1, particle.baseAlpha * lifeRatio * this.intensity));
-            const x = enemy.x + particle.x;
-            const y = enemy.y - scrollY + particle.y;
+            const x = screen.x + particle.x;
+            const y = screen.y + particle.y;
 
             ctx.fillStyle = this.color;
             ctx.globalAlpha = alpha;

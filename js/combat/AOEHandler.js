@@ -2,6 +2,8 @@
  * AOEHandler - 攻击范围效果处理器
  * 处理闪电连锁、爆炸、圆形AOE、射线、分裂子弹等范围攻击效果
  */
+import { wrapDeltaX } from '../utils.js';
+
 export default class AOEHandler {
     /**
      * @param {EffectsManager} effectsManager - 特效管理器
@@ -10,6 +12,7 @@ export default class AOEHandler {
     constructor(effectsManager = null, bulletPool = null) {
         this.effectsManager = effectsManager;
         this.bulletPool = bulletPool;
+        this.worldWidth = null;
     }
 
     /**
@@ -18,6 +21,15 @@ export default class AOEHandler {
     setDependencies(effectsManager, bulletPool) {
         this.effectsManager = effectsManager;
         this.bulletPool = bulletPool;
+    }
+
+    setWorldWidth(width) {
+        this.worldWidth = Number.isFinite(width) ? width : null;
+    }
+
+    getDeltaX(fromX, toX) {
+        if (!Number.isFinite(this.worldWidth) || this.worldWidth <= 0) return toX - fromX;
+        return wrapDeltaX(toX - fromX, this.worldWidth);
     }
 
     /**
@@ -80,7 +92,7 @@ export default class AOEHandler {
             for (const target of enemies) {
                 if (target.hp <= 0 || hitEnemies.has(target)) continue;
 
-                const dx = target.x - currentSource.x;
+                const dx = this.getDeltaX(currentSource.x, target.x);
                 const dy = target.y - currentSource.y;
                 const dist = Math.sqrt(dx * dx + dy * dy);
 
@@ -131,7 +143,7 @@ export default class AOEHandler {
         for (const target of enemies) {
             if (target.hp <= 0 || target === hitEnemy) continue;
 
-            const dx = target.x - hitEnemy.x;
+            const dx = this.getDeltaX(hitEnemy.x, target.x);
             const dy = target.y - hitEnemy.y;
             const dist = Math.sqrt(dx * dx + dy * dy);
 
@@ -158,7 +170,7 @@ export default class AOEHandler {
         for (const target of enemies) {
             if (target.hp <= 0 || target === hitEnemy) continue;
 
-            const dx = target.x - hitEnemy.x;
+            const dx = this.getDeltaX(hitEnemy.x, target.x);
             const dy = target.y - hitEnemy.y;
             const dist = Math.sqrt(dx * dx + dy * dy);
 
@@ -186,7 +198,7 @@ export default class AOEHandler {
         for (const target of enemies) {
             if (target.hp <= 0) continue;
 
-            const dx = target.x - origin.x;
+            const dx = this.getDeltaX(origin.x, target.x);
             const dy = target.y - origin.y;
             const dist = Math.sqrt(dx * dx + dy * dy);
 
@@ -209,7 +221,7 @@ export default class AOEHandler {
         for (const target of enemies) {
             if (target.hp <= 0 || target === hitEnemy) continue;
 
-            const dx = target.x - hitEnemy.x;
+            const dx = this.getDeltaX(hitEnemy.x, target.x);
             const dy = target.y - hitEnemy.y;
             const dist = Math.sqrt(dx * dx + dy * dy);
 
@@ -221,7 +233,7 @@ export default class AOEHandler {
 
         // 确定射线方向
         if (closestTarget) {
-            const rayDx = closestTarget.x - hitEnemy.x;
+            const rayDx = this.getDeltaX(hitEnemy.x, closestTarget.x);
             const rayDy = closestTarget.y - hitEnemy.y;
             const rayLen = Math.sqrt(rayDx * rayDx + rayDy * rayDy);
             rayDirX = rayDx / rayLen;
@@ -235,13 +247,14 @@ export default class AOEHandler {
 
         // 生成射线特效
         if (this.effectsManager) {
-            const rayLength = bullet.rayLength || 100;
+            const rayColor = bullet.rayColor || '#FFA500';
             this.effectsManager.addRay(
-                hitEnemy.x - rayDirX * rayLength,
-                hitEnemy.y - rayDirY * rayLength,
-                hitEnemy.x + rayDirX * rayLength,
-                hitEnemy.y + rayDirY * rayLength,
-                '#FFA500'
+                hitEnemy.x,
+                hitEnemy.y,
+                rayDirX,
+                rayDirY,
+                rayColor,
+                { mode: 'directional', lengthScale: 1.2 }
             );
         }
 
@@ -253,7 +266,7 @@ export default class AOEHandler {
             if (target.hp <= 0) continue;
 
             // 计算点到射线的距离
-            const px = target.x - hitEnemy.x;
+            const px = this.getDeltaX(hitEnemy.x, target.x);
             const py = target.y - hitEnemy.y;
             const dot = px * rayDirX + py * rayDirY;
 
@@ -304,7 +317,7 @@ export default class AOEHandler {
         for (const target of enemies) {
             if (target.hp <= 0 || target === hitEnemy) continue;
 
-            const dx = target.x - hitEnemy.x;
+            const dx = this.getDeltaX(hitEnemy.x, target.x);
             const dy = target.y - hitEnemy.y;
             const dist = Math.sqrt(dx * dx + dy * dy);
 
@@ -322,7 +335,7 @@ export default class AOEHandler {
         const splitDamage = (bullet.damage || 0) * splitMultiplier;
 
         for (const { enemy } of selectedTargets) {
-            const dx = enemy.x - hitEnemy.x;
+            const dx = this.getDeltaX(hitEnemy.x, enemy.x);
             const dy = enemy.y - hitEnemy.y;
             const angle = Math.atan2(dy, dx);
 

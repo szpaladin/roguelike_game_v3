@@ -1,4 +1,5 @@
 import Bullet from '../../js/combat/Bullet.js';
+import { GAME_CONFIG } from '../../js/config.js';
 
 describe('Bullet', () => {
     let bullet;
@@ -31,7 +32,11 @@ describe('Bullet', () => {
         bullet.update();
         expect(bullet.x).toBe(105);
         expect(bullet.y).toBe(100);
-        expect(bullet.lifetime).toBe(59);
+        const multiplier = Number.isFinite(GAME_CONFIG.BULLET_LIFETIME_MULTIPLIER)
+            ? GAME_CONFIG.BULLET_LIFETIME_MULTIPLIER
+            : 1;
+        const expectedLifetime = Math.round(defaultData.lifetime * multiplier) - 1;
+        expect(bullet.lifetime).toBe(expectedLifetime);
     });
 
     test('bullet deactivates when lifetime expires', () => {

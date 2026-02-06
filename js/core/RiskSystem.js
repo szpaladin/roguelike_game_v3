@@ -21,7 +21,8 @@ const DEPTH_ZONES = [
         lightingAlpha: 0.00,      // 光照遮罩透明度
         // 围攻相关（P3 预留）
         siegeWaves: 1,            // 围攻波次
-        siegeEnemyCount: 6        // 每波敌人数量
+        siegeEnemyCount: 6,       // 每波敌人数量
+        scrollSpeedMultiplier: 1.0
     },
     {
         minDepth: 300,
@@ -32,7 +33,8 @@ const DEPTH_ZONES = [
         oxygenInterval: 2.5,
         lightingAlpha: 0.20,
         siegeWaves: 2,
-        siegeEnemyCount: 12
+        siegeEnemyCount: 12,
+        scrollSpeedMultiplier: 1.05
     },
     {
         minDepth: 500,
@@ -43,7 +45,8 @@ const DEPTH_ZONES = [
         oxygenInterval: 1.5,
         lightingAlpha: 0.45,
         siegeWaves: 3,
-        siegeEnemyCount: 22
+        siegeEnemyCount: 22,
+        scrollSpeedMultiplier: 1.1
     },
     {
         minDepth: 800,
@@ -54,7 +57,8 @@ const DEPTH_ZONES = [
         oxygenInterval: 0.8,
         lightingAlpha: 0.70,
         siegeWaves: 4,
-        siegeEnemyCount: 30
+        siegeEnemyCount: 30,
+        scrollSpeedMultiplier: 1.15
     }
 ];
 
@@ -142,6 +146,14 @@ export default class RiskSystem {
      */
     getLightingAlpha(distance) {
         return this.getCurrentZone(distance).lightingAlpha;
+    }
+
+    /**
+     * 获取滚动速度倍率
+     */
+    getScrollSpeedMultiplier(distance) {
+        const zone = this.getCurrentZone(distance);
+        return Number.isFinite(zone.scrollSpeedMultiplier) ? zone.scrollSpeedMultiplier : 1.0;
     }
 
     // ========== 围攻相关（P3 预留）==========

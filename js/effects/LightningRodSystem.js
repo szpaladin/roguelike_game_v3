@@ -6,10 +6,18 @@ const LIGHTNING_ROD_ID = 'lightning_rod';
 export default class LightningRodSystem {
     constructor(effectsManager = null) {
         this.aoeHandler = new AOEHandler(effectsManager);
+        this.worldWidth = null;
     }
 
     setDependencies(effectsManager) {
         this.aoeHandler.setDependencies(effectsManager, null);
+    }
+
+    setWorldWidth(width) {
+        this.worldWidth = Number.isFinite(width) ? width : null;
+        if (this.aoeHandler && typeof this.aoeHandler.setWorldWidth === 'function') {
+            this.aoeHandler.setWorldWidth(this.worldWidth);
+        }
     }
 
     update(enemies, playerStats = null) {

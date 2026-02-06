@@ -1,6 +1,7 @@
 import Enemy from './Enemy.js';
 import { getRandomEnemyType } from './EnemiesData.js';
 import { GAME_CONFIG } from '../config.js';
+import { wrapX } from '../utils.js';
 
 /**
  * EnemySpawner - 敌人生成器
@@ -41,7 +42,7 @@ export default class EnemySpawner {
      * @param {Object} playerPos - 玩家当前显示的坐标 (x, y)
      * @returns {Enemy|null} - 生成的敌人实例或 null
      */
-    spawn(distance, playerPos) {
+    spawn(distance, playerPos, view = null, dir = null) {
         // 检查是否达到生成间隔（使用动态间隔）
         const effectiveInterval = this.getEffectiveSpawnInterval();
         if (Math.abs(distance - this.lastSpawnY) < effectiveInterval) {
@@ -53,6 +54,19 @@ export default class EnemySpawner {
 
         // 生成位置：在屏幕底部下方 (scrollY + canvasHeight + 50)
         // 注意：在原项目中 distance 就是 scrollY
+        if (view && dir && Number.isFinite(view.cameraX) && Number.isFinite(view.cameraY)) {
+            const forward = view.height * 0.8 + 50;
+            const sideRange = view.width * 0.6;
+            const side = (Math.random() * 2 - 1) * sideRange;
+            const perpX = -dir.y;
+            const perpY = dir.x;
+            const baseX = view.cameraX + dir.x * forward;
+            const baseY = view.cameraY + dir.y * forward;
+            const spawnX = wrapX(baseX + perpX * side, view.worldWidth);
+            const spawnY = baseY + perpY * side;
+            return new Enemy(spawnX, spawnY, type);
+        }
+
         const spawnY = distance + this.canvasHeight + 50;
         const spawnX = Math.random() * this.canvasWidth;
 

@@ -1,4 +1,4 @@
-import PlayerStats from './PlayerStats.js';
+﻿import PlayerStats from './PlayerStats.js';
 import WeaponSystem from '../weapons/WeaponSystem.js';
 import { GAME_CONFIG } from '../config.js';
 import { ASSET_MANAGER } from '../assets/AssetManager.js';
@@ -22,6 +22,13 @@ export default class Player {
 
         this.invulnerable = false;
         this.invulnerableTime = 0;
+        this.vx = 0;
+        this.vy = 0;
+        this.animTime = 0;
+        this.animFrame = 0;
+        this.facing = 1;
+        this.isMoving = false;
+        this.animState = 'idle';
     }
 
     /**
@@ -38,18 +45,71 @@ export default class Player {
         if (keys['s'] || keys['arrowdown']) dy += 1;
         if (keys['a'] || keys['arrowleft']) dx -= 1;
         if (keys['d'] || keys['arrowright']) dx += 1;
+        const inertiaCfg = GAME_CONFIG.WATER_INERTIA || {};
+        const accelBase = Number.isFinite(inertiaCfg.PLAYER_ACCEL) ? inertiaCfg.PLAYER_ACCEL : 0.22;
+        const decelBase = Number.isFinite(inertiaCfg.PLAYER_DECEL) ? inertiaCfg.PLAYER_DECEL : 0.14;
+        const stopThreshold = Number.isFinite(inertiaCfg.PLAYER_STOP) ? inertiaCfg.PLAYER_STOP : 0.03;
+        const frameScale = dt * 60;
+        const accel = 1 - Math.pow(1 - accelBase, frameScale);
+        const decel = 1 - Math.pow(1 - decelBase, frameScale);
+
+        let targetVx = 0;
+        let targetVy = 0;
 
         if (dx !== 0 || dy !== 0) {
             const dist = Math.sqrt(dx * dx + dy * dy);
-            // 注意：由于是按帧更新逻辑，这里计算位移
-            // 原项目中是每帧固定位移，即 speed * 1 (帧)
-            // 在 TDD 测试中，我们按 1/60 换算以匹配
             const speedMultiplier = this.artifactSystem && typeof this.artifactSystem.getSpeedMultiplier === 'function'
                 ? this.artifactSystem.getSpeedMultiplier()
                 : 1;
-            const moveDist = this.stats.speed * speedMultiplier * (dt * 60);
-            this.x += (dx / dist) * moveDist;
-            this.y += (dy / dist) * moveDist;
+            const baseSpeed = this.stats.speed * speedMultiplier;
+            targetVx = (dx / dist) * baseSpeed;
+            targetVy = (dy / dist) * baseSpeed;
+            this.vx += (targetVx - this.vx) * accel;
+            this.vy += (targetVy - this.vy) * accel;
+        } else {
+            this.vx += (0 - this.vx) * decel;
+            this.vy += (0 - this.vy) * decel;
+        }
+
+        if (Math.abs(this.vx) < stopThreshold) this.vx = 0;
+        if (Math.abs(this.vy) < stopThreshold) this.vy = 0;
+
+        this.x += this.vx * frameScale;
+        this.y += this.vy * frameScale;
+        const moveThreshold = 0.01;
+        if (this.vx < -moveThreshold) this.facing = -1;
+        else if (this.vx > moveThreshold) this.facing = 1;
+        this.isMoving = Math.abs(this.vx) > moveThreshold || Math.abs(this.vy) > moveThreshold;
+
+        const speedMag = Math.hypot(this.vx, this.vy);
+        const baseSpeed = this.stats.speed || 1;
+        const speedRatio = baseSpeed > 0 ? speedMag / baseSpeed : 0;
+        const fastThreshold = 1.25;
+        const rushThreshold = 1.6;
+        let nextState = 'idle';
+
+        if (this.invulnerable) {
+            nextState = 'hurt';
+        } else if (this.isMoving) {
+            if (speedRatio >= rushThreshold) nextState = 'rush';
+            else if (speedRatio >= fastThreshold) nextState = 'fast';
+            else nextState = 'swim';
+        }
+
+        if (nextState !== this.animState) {
+            this.animState = nextState;
+            this.animTime = 0;
+            this.animFrame = 0;
+        }
+
+        const sprite = SPRITES[`player_${this.animState}`] || SPRITES.player_swim || SPRITES.player_idle;
+        const frameCfg = sprite ? sprite.frame : null;
+        if (frameCfg && Number.isFinite(frameCfg.count) && frameCfg.count > 1) {
+            const rate = Number.isFinite(frameCfg.rate) ? frameCfg.rate : 8;
+            this.animTime += dt;
+            this.animFrame = Math.floor(this.animTime * rate) % frameCfg.count;
+        } else {
+            this.animFrame = 0;
         }
 
         // 2. 边界限制
@@ -119,12 +179,43 @@ export default class Player {
         if (this.invulnerable && Math.floor(Date.now() / 100) % 2 === 0) {
             ctx.globalAlpha = 0.5;
         }
-        const sprite = SPRITES.player;
+        const sprite = SPRITES[`player_${this.animState}`] || SPRITES.player_swim || SPRITES.player_idle;
         const img = sprite ? ASSET_MANAGER.getImage(sprite.id) : null;
         if (img) {
             const w = sprite.w || this.radius * 2;
             const h = sprite.h || this.radius * 2;
-            ctx.drawImage(img, this.x - w / 2, this.y - h / 2, w, h);
+            let sx = 0;
+            let sy = 0;
+            let sw = img.width;
+            let sh = img.height;
+            if (sprite.frame) {
+                const frame = sprite.frame;
+                if (Number.isFinite(frame.w) && Number.isFinite(frame.h)) {
+                    const frameIndex = Number.isFinite(this.animFrame) ? this.animFrame : 0;
+                    const frameX = frameIndex * frame.w;
+                    if (frame.trim) {
+                        sx = frameX + frame.trim.x;
+                        sy = frame.trim.y;
+                        sw = frame.trim.w;
+                        sh = frame.trim.h;
+                    } else {
+                        sx = frameX;
+                        sy = 0;
+                        sw = frame.w;
+                        sh = frame.h;
+                    }
+                } else if (Number.isFinite(frame.x)) {
+                    sx = frame.x;
+                    sy = frame.y;
+                    sw = frame.w;
+                    sh = frame.h;
+                }
+            }
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            if (this.facing < 0) ctx.scale(-1, 1);
+            ctx.drawImage(img, sx, sy, sw, sh, -w / 2, -h / 2, w, h);
+            ctx.restore();
         } else {
             ctx.beginPath();
             ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
@@ -137,3 +228,4 @@ export default class Player {
         ctx.restore();
     }
 }
+

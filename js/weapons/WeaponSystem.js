@@ -1,5 +1,6 @@
 ﻿import Weapon from './Weapon.js';
 import { WEAPON_TIER } from './WeaponsData.js';
+import { wrapDeltaX, wrapX } from '../utils.js';
 
 /**
  * WeaponSystem - 武器系统管理
@@ -37,7 +38,7 @@ export default class WeaponSystem {
     }
 
 
-    createSkyDropBullet(weapon, target, playerAttack, scrollY) {
+    createSkyDropBullet(weapon, target, playerAttack, scrollY, worldWidth = null) {
         if (!weapon || !weapon.def || !weapon.canFire()) return null;
 
         const def = weapon.def;
@@ -56,8 +57,9 @@ export default class WeaponSystem {
         const effectiveAttack = baseAttack + 45;
         const finalDamage = def.damage * (effectiveAttack / 10);
 
+        const spawnX = Number.isFinite(worldWidth) ? wrapX(target.x + randOffset, worldWidth) : (target.x + randOffset);
         return {
-            x: target.x + randOffset,
+            x: spawnX,
             y: scrollY - offsetY,
             vx: 0,
             vy: dropSpeed,
@@ -68,7 +70,9 @@ export default class WeaponSystem {
             damage: finalDamage,
             active: true
         };
-    }    /**
+    }
+
+    /**
      * 自动搜索目标并发射
      * @param {Object} playerPos - 玩家当前位置 {x, y}
      * @param {number} playerAttack - 玩家攻击力
@@ -76,15 +80,23 @@ export default class WeaponSystem {
      * @param {BulletPool} bulletPool - 子弹对象池
      * @param {number} scrollY - 当前滚动位置（世界坐标需要）
      */
-    autoShoot(playerPos, playerAttack, enemies, bulletPool, scrollY = 0, artifactSystem = null) {
-        const playerWorldY = scrollY + playerPos.y;
+    autoShoot(playerPos, playerAttack, enemies, bulletPool, view = null, artifactSystem = null) {
+        const resolvedView = typeof view === 'number'
+            ? { scrollX: 0, scrollY: view, worldWidth: null }
+            : view;
+        const hasView = !!resolvedView;
+        const scrollX = hasView ? (resolvedView.scrollX || 0) : 0;
+        const scrollY = hasView ? (resolvedView.scrollY || 0) : 0;
+        const worldWidth = hasView ? resolvedView.worldWidth : null;
+        const playerWorldX = hasView ? wrapX(scrollX + playerPos.x, worldWidth) : playerPos.x;
+        const playerWorldY = hasView ? scrollY + playerPos.y : playerPos.y;
         const weaponCount = this.weapons.length;
 
         for (let i = 0; i < weaponCount; i++) {
             const weapon = this.weapons[i];
             if (!weapon.canFire()) continue;
 
-            const target = this.findNearestEnemy(playerPos.x, playerWorldY, enemies);
+            const target = this.findNearestEnemy(playerWorldX, playerWorldY, enemies, worldWidth);
             if (target) {
                 // 计算扩散角度：每个武器基于索引有微小角度偏移
                 // spread = (index - (weaponCount - 1)/2) * 0.05 弧度（约3度）
@@ -92,10 +104,10 @@ export default class WeaponSystem {
 
                 let bulletData = null;
                 if (weapon.def && weapon.def.spawnMode === 'sky_drop') {
-                    bulletData = this.createSkyDropBullet(weapon, target, playerAttack, scrollY);
+                    bulletData = this.createSkyDropBullet(weapon, target, playerAttack, scrollY, worldWidth);
                 } else {
                     bulletData = weapon.fireWithSpread(
-                        playerPos.x,
+                        playerWorldX,
                         playerWorldY,
                         { x: target.x, y: target.y },
                         playerAttack,
@@ -115,14 +127,14 @@ export default class WeaponSystem {
     /**
      * 搜索最近的存活敌人
      */
-    findNearestEnemy(px, py, enemies) {
+    findNearestEnemy(px, py, enemies, worldWidth = null) {
         let nearest = null;
         let minDist = Infinity;
 
         for (const enemy of enemies) {
-            if (enemy.hp <= 0 || enemy.hiddenInSeaweed) continue;
+            if (enemy.hp <= 0 || enemy.hiddenInSeaweed || enemy.hiddenInFog) continue;
 
-            const dx = enemy.x - px;
+            const dx = Number.isFinite(worldWidth) ? wrapDeltaX(enemy.x - px, worldWidth) : (enemy.x - px);
             const dy = enemy.y - py;
             const distSq = dx * dx + dy * dy;
 
@@ -172,6 +184,7 @@ export default class WeaponSystem {
             .map(w => w.def.id);
     }
 }
+
 
 
 

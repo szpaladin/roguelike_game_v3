@@ -1,3 +1,5 @@
+import { worldToScreen } from '../utils.js';
+
 const MIN_PARTICLES = 6;
 const MAX_PARTICLES = 14;
 
@@ -7,6 +9,8 @@ export default class PlagueVFX {
         this.radius = radius;
         this.color = color || '#6f7a66';
         this.intensity = 1;
+        this.mistPhase = Math.random() * Math.PI * 2;
+        this.mistLayers = this.createMistLayers(radius);
         this.maxParticles = PlagueVFX.getParticleCount(radius, 1);
         this.particles = [];
         this.resetParticles(enemy);
@@ -40,6 +44,9 @@ export default class PlagueVFX {
         if (needsReset || this.particles.length !== this.maxParticles) {
             this.resetParticles(enemy);
         }
+        if (needsReset) {
+            this.mistLayers = this.createMistLayers(this.radius);
+        }
     }
 
     resetParticles(enemy) {
@@ -53,8 +60,8 @@ export default class PlagueVFX {
         const radius = enemy && Number.isFinite(enemy.radius) ? enemy.radius : this.radius;
         const angle = Math.random() * Math.PI * 2;
         const distance = radius * (0.1 + Math.random() * 0.8);
-        const size = radius * (0.14 + Math.random() * 0.16);
-        const baseAlpha = 0.18 + Math.random() * 0.22;
+        const size = radius * (0.18 + Math.random() * 0.22);
+        const baseAlpha = 0.16 + Math.random() * 0.18;
         const maxLife = 40 + Math.floor(Math.random() * 50);
 
         return {
@@ -72,8 +79,27 @@ export default class PlagueVFX {
         };
     }
 
+    createMistLayers(radius) {
+        const count = Math.max(3, Math.min(6, Math.round(radius / 12)));
+        const layers = [];
+        for (let i = 0; i < count; i++) {
+            layers.push({
+                angle: Math.random() * Math.PI * 2,
+                distance: radius * (0.2 + Math.random() * 0.6),
+                radius: radius * (0.45 + Math.random() * 0.45),
+                alpha: 0.08 + Math.random() * 0.1,
+                drift: 0.015 + Math.random() * 0.02,
+                wobble: radius * (0.02 + Math.random() * 0.05),
+                phase: Math.random() * Math.PI * 2
+            });
+        }
+        return layers;
+    }
+
     update(enemy, effect) {
         this.sync(enemy, effect);
+
+        this.mistPhase += 0.015;
 
         const maxY = -this.radius * 1.05;
         for (let i = 0; i < this.particles.length; i++) {
@@ -89,36 +115,43 @@ export default class PlagueVFX {
         }
     }
 
-    draw(ctx, scrollY, enemy) {
+    draw(ctx, view, enemy) {
         if (!ctx || !enemy) return;
 
+        const screen = view ? worldToScreen(enemy.x, enemy.y, view) : { x: enemy.x, y: enemy.y };
         ctx.save();
-        ctx.fillStyle = this.color;
-        ctx.globalAlpha = 0.15 * this.intensity;
-        ctx.beginPath();
-        ctx.arc(enemy.x, enemy.y - scrollY, this.radius, 0, Math.PI * 2);
-        ctx.fill();
+        this.drawSoftBlob(ctx, screen.x, screen.y, this.radius * 0.9, 0.12 * this.intensity, this.color);
+
+        for (const layer of this.mistLayers) {
+            const sway = Math.sin(this.mistPhase + layer.phase) * layer.wobble;
+            const x = screen.x + Math.cos(layer.angle) * (layer.distance + sway);
+            const y = screen.y + Math.sin(layer.angle) * (layer.distance * 0.7) + sway * 0.4;
+            this.drawSoftBlob(ctx, x, y, layer.radius, layer.alpha * this.intensity, this.color);
+        }
 
         for (const particle of this.particles) {
             const lifeRatio = particle.maxLife > 0 ? particle.life / particle.maxLife : 1;
             const alpha = Math.max(0, Math.min(1, particle.baseAlpha * lifeRatio * this.intensity));
-            const x = enemy.x + particle.x;
-            const y = enemy.y - scrollY + particle.y;
+            const x = screen.x + particle.x;
+            const y = screen.y + particle.y;
 
-            ctx.fillStyle = this.color;
-            ctx.globalAlpha = alpha;
-            ctx.beginPath();
-            ctx.arc(x, y, particle.size, 0, Math.PI * 2);
-            ctx.fill();
-
-            ctx.globalAlpha = alpha * 0.3;
-            ctx.fillStyle = '#cfd5c9';
-            ctx.beginPath();
-            ctx.arc(x - particle.size * 0.2, y - particle.size * 0.2, particle.size * 0.4, 0, Math.PI * 2);
-            ctx.fill();
+            this.drawSoftBlob(ctx, x, y, particle.size, alpha, this.color);
+            this.drawSoftBlob(ctx, x - particle.size * 0.2, y - particle.size * 0.2, particle.size * 0.4, alpha * 0.35, '#cfd5c9');
         }
 
         ctx.restore();
         ctx.globalAlpha = 1;
+    }
+
+    drawSoftBlob(ctx, x, y, radius, alpha, color) {
+        if (alpha <= 0 || radius <= 0) return;
+        const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+        gradient.addColorStop(0, color);
+        gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.fill();
     }
 }
